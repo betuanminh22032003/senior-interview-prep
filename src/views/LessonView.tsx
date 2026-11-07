@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, CheckCircle, Circle, Clock, CursorClick, Quotes, Target } from '@phosphor-icons/react';
+import { ArrowLeft, ArrowRight, CheckCircle, Circle, Clock, CursorClick } from '@phosphor-icons/react';
 import { chapterByNum, chapterHref, lessonById, lessonHref, neighbours, partOfChapter } from '../data';
-import { ExerciseItem, Html, QAItem, StatusBadge } from '../components';
+import { ExerciseItem, Html, QAItem } from '../components';
 import { VIZ } from '../sqlviz';
 import { isLearned, useProgress } from '../store';
-import { STATUS_HINT } from '../types';
 
 export function LessonView({ id }: { id: string }) {
   const lesson = lessonById(id)!;
@@ -47,12 +46,26 @@ export function LessonView({ id }: { id: string }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [prev, next]);
 
+  const before = lesson.sections.filter((s) => !s.afterQa);
+  const after = lesson.sections.filter((s) => s.afterQa);
   const outline = [
-    ...lesson.sections.map((s) => ({ id: s.id, title: s.title })),
-    { id: 'cau-hoi', title: 'Câu hỏi phỏng vấn' },
-    { id: 'tom-tat', title: 'Tóm tắt' },
-    { id: 'bai-tap', title: 'Bài tập' },
+    ...before.map((s) => ({ id: s.id, title: s.title })),
+    { id: 'cau-hoi', title: 'Câu hỏi vặn' },
+    ...after.map((s) => ({ id: s.id, title: s.title })),
+    { id: 'nho-nhanh', title: 'Nhớ nhanh' },
+    ...(lesson.exercises.length ? [{ id: 'bai-tap', title: 'Bài tập' }] : []),
   ];
+  const section = (s: (typeof lesson.sections)[number], i: number) => (
+    <section key={s.id} id={s.id} className={`lesson-section${s.title === 'Cách show off' ? ' showoff' : ''}`}>
+      <h2 dangerouslySetInnerHTML={{ __html: s.title }} />
+      <Html html={s.html} />
+      {i === 0 && Viz && (
+        <div className="lesson-viz">
+          <Viz />
+        </div>
+      )}
+    </section>
+  );
   const activeSection = useScrollSpy(outline.map((o) => o.id));
 
   return (
@@ -70,14 +83,13 @@ export function LessonView({ id }: { id: string }) {
           <p className="lesson-num mono">Bài {lesson.id}</p>
           <h1 className="lesson-title" dangerouslySetInnerHTML={{ __html: lesson.title }} />
           <div className="lesson-meta">
-            {lesson.status && <StatusBadge status={lesson.status} />}
             <span>
               <Clock weight="bold" /> {lesson.minutes} phút đọc
             </span>
             <span>
               {lesson.qas.length} câu hỏi · {learned} đã thuộc
             </span>
-            <span>{lesson.exercises.length} bài tập</span>
+            {lesson.exercises.length > 0 && <span>{lesson.exercises.length} bài tập</span>}
             {Viz && (
               <span className="meta-viz">
                 <CursorClick weight="bold" /> Có mô phỏng
@@ -86,51 +98,11 @@ export function LessonView({ id }: { id: string }) {
           </div>
         </header>
 
-        {(lesson.cvLine || lesson.status) && (
-          <section className="cv-box">
-            {lesson.cvLine && (
-              <div className="cv-line">
-                <Quotes weight="fill" aria-hidden />
-                <div>
-                  <p className="box-label">Dòng CV</p>
-                  <Html html={lesson.cvLine} className="cv-text" />
-                </div>
-              </div>
-            )}
-            {lesson.status && (
-              <div className={`cv-status status-${lesson.status}`}>
-                <p className="box-label">
-                  Trạng thái: <StatusBadge status={lesson.status} /> <span className="muted">{STATUS_HINT[lesson.status]}</span>
-                </p>
-                {lesson.statusHtml && <Html html={lesson.statusHtml} />}
-              </div>
-            )}
-          </section>
-        )}
-
-        <section className="goals">
-          <p className="box-label">
-            <Target weight="bold" /> Mục tiêu bài học
-          </p>
-          <Html html={lesson.goalsHtml} />
-        </section>
-
-        {Viz && (
-          <div className="lesson-viz">
-            <Viz />
-          </div>
-        )}
-
-        {lesson.sections.map((s) => (
-          <section key={s.id} id={s.id} className="lesson-section">
-            <h2 dangerouslySetInnerHTML={{ __html: s.title }} />
-            <Html html={s.html} />
-          </section>
-        ))}
+        {before.map(section)}
 
         <section id="cau-hoi" className="lesson-section">
-          <h2>Câu hỏi phỏng vấn</h2>
-          <p className="section-note">Tự trả lời thành tiếng trước, rồi mới mở trả lời mẫu. Mức nhớ bạn chấm được dùng cho phần Ôn tập.</p>
+          <h2>Câu hỏi vặn</h2>
+          <p className="section-note">Người phỏng vấn sẽ đào sâu như thế này. Tự trả lời thành tiếng trước, rồi mới mở cách trả lời. Mức nhớ bạn chấm được dùng cho phần Ôn tập.</p>
           <ol className="qa-list">
             {lesson.qas.map((q, i) => (
               <QAItem key={q.id} qa={q} index={i + 1} />
@@ -138,19 +110,23 @@ export function LessonView({ id }: { id: string }) {
           </ol>
         </section>
 
-        <section id="tom-tat" className="lesson-section summary">
-          <h2>Tóm tắt</h2>
+        {after.map((s) => section(s, -1))}
+
+        <section id="nho-nhanh" className="lesson-section summary">
+          <h2>Nhớ nhanh</h2>
           <Html html={lesson.summaryHtml} />
         </section>
 
-        <section id="bai-tap" className="lesson-section">
-          <h2>Bài tập</h2>
-          <ol className="exercise-list">
-            {lesson.exercises.map((ex, i) => (
-              <ExerciseItem key={i} ex={ex} index={i + 1} />
-            ))}
-          </ol>
-        </section>
+        {lesson.exercises.length > 0 && (
+          <section id="bai-tap" className="lesson-section">
+            <h2>Bài tập</h2>
+            <ol className="exercise-list">
+              {lesson.exercises.map((ex, i) => (
+                <ExerciseItem key={i} ex={ex} index={i + 1} />
+              ))}
+            </ol>
+          </section>
+        )}
 
         <div className="lesson-done">
           <button className={read ? 'btn-ghost' : 'btn'} onClick={() => toggleRead(id)}>

@@ -64,7 +64,7 @@ export function QAItem({ qa, index }: { qa: QA; index: number }) {
       </button>
       {open && (
         <div className="qa-answer">
-          <p className="answer-label">Trả lời mẫu</p>
+          <p className="answer-label">Cách trả lời</p>
           <Html html={qa.a} />
           <GradeButtons id={qa.id} onGraded={() => setOpen(false)} />
         </div>

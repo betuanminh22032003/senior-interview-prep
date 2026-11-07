@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MagnifyingGlass } from '@phosphor-icons/react';
 import { LESSONS, lessonHref } from '../data';
-import { StatusBadge } from '../components';
 import type { Lesson } from '../types';
 
 /** Lowercase without Vietnamese diacritics, so "chi so" matches "chỉ số". */
@@ -108,7 +107,6 @@ export function Search({ initial }: { initial: string }) {
             <a href={lessonHref(lesson.id)}>
               <span className="search-title">
                 <span className="mono">Bài {lesson.id}</span> {lesson.titleText}
-                {lesson.status && <StatusBadge status={lesson.status} />}
               </span>
               <span className="search-snippet">{snippet(text, folded, terms)}</span>
             </a>

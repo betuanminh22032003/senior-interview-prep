@@ -16,6 +16,8 @@ export interface Section {
   id: string;
   title: string;
   html: string;
+  /** True for sections placed after "Câu hỏi vặn" (e.g. "Bẫy cần tránh"). */
+  afterQa: boolean;
 }
 
 export interface Lesson {

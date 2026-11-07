@@ -1,23 +1,17 @@
 ## Chương 20. Server và vận hành
-Các chương trước xử lý từng câu lệnh và từng index. Chương này lùi ra một bước: cấu hình instance, tempdb, transaction log và vòng đời dữ liệu. Trong báo cáo hiệu năng APM nội bộ, nhóm vấn đề này sinh ra nhiều cảnh báo đỏ nhất, phần lớn do giữ nguyên cấu hình mặc định lúc cài và do việc vận hành bị bỏ ngỏ: không có job backup log, tempdb nằm trên ổ hệ điều hành, bảng backup tự sinh không ai dọn.
+Các chương trước làm việc với từng câu lệnh và từng index. Chương này lùi ra một bước, nhìn cả instance: bộ nhớ, song song, tempdb, transaction log và chuyện dữ liệu cũ tích tụ theo năm tháng. Trong đợt rà soát hiệu năng các cụm SQL Server của hệ thống thi mà bạn dẫn, nhóm vấn đề này cho nhiều cảnh báo đỏ nhất. Nguyên nhân hiếm khi phức tạp: cấu hình để nguyên như lúc cài, không có job backup log, tempdb nằm trên ổ hệ điều hành, bảng backup tạo tay không ai dọn.
 
-Interviewer hay hỏi mảng này vì nó phân biệt người chỉ viết query với người từng chịu trách nhiệm một hệ thống chạy thật. Câu hỏi thường bắt đầu từ một triệu chứng ("log đầy", "ổ C: hết chỗ", "server dùng hết RAM") và chờ bạn đi đúng thứ tự: đo gì, nguyên nhân gốc là gì, sửa thế nào mà không mất dữ liệu.
-
-Học xong chương này, bạn đọc được cấu hình một instance và chỉ ra chỗ lệch so với best practice, giải thích được vì sao log không được tái sử dụng, và thiết kế được chính sách giữ dữ liệu cho bảng lớn.
+Người phỏng vấn hay hỏi mảng này vì nó tách người chỉ viết query khỏi người từng chịu trách nhiệm một hệ thống chạy thật. Câu hỏi thường mở bằng một triệu chứng ("log đầy", "ổ C hết chỗ", "SQL Server ăn hết RAM") và chờ xem bạn có đi đúng thứ tự không: đo gì trước, nguyên nhân gốc là gì, sửa thế nào mà không mất dữ liệu.
 
 ### Bài 20.1. Cấu hình instance
 
-#### Mục tiêu
-- Sau bài này, bạn giải thích được ý nghĩa và giá trị hợp lý của `max server memory`, `cost threshold for parallelism`, `max degree of parallelism`, `optimize for ad hoc workloads`.
-- Bạn kiểm tra được cấu hình một instance bằng `sys.configurations` và `sp_Blitz`, rồi đề xuất thay đổi kèm cách đo trước và sau.
-- Bạn biết thay đổi nào chạy online, thay đổi nào cần restart hoặc khung bảo trì.
+#### Kiến thức
+Một instance SQL Server mới cài chạy được ngay, nhưng vài giá trị mặc định được đặt từ thời phần cứng khác hẳn bây giờ. Bốn thiết lập dưới đây gần như luôn phải xem lại.
 
-#### Bộ nhớ: max server memory
-SQL Server dùng phần lớn RAM cho buffer pool (cache trang dữ liệu 8 KB) và plan cache. Mặc định `max server memory` là 2.147.483.647 MB, tức là không giới hạn: SQL Server sẽ chiếm RAM tới khi hệ điều hành báo thiếu bộ nhớ (memory pressure) rồi mới nhả ra.
+##### Bộ nhớ: max server memory
+SQL Server dùng phần lớn RAM cho buffer pool (cache các trang dữ liệu 8 KB) và plan cache. Mặc định `max server memory` gần như không giới hạn, nên SQL Server chiếm RAM tới khi Windows báo thiếu rồi mới nhả ra. Vấn đề là ngoài buffer pool, tiến trình còn cần bộ nhớ cho thread stack của worker, CLR, linked server provider, backup buffer; hệ điều hành, agent giám sát, antivirus cũng cần RAM. Khi OS thiếu, nó ép SQL Server trả bộ nhớ, hiệu năng dao động, nặng hơn là phân trang ra đĩa.
 
-Vì sao không nên để vậy: ngoài buffer pool, tiến trình SQL Server còn dùng bộ nhớ cho thread stack (mỗi worker khoảng 2 MB trên x64), CLR, linked server provider, backup buffer. Hệ điều hành, agent giám sát, antivirus cũng cần RAM. Khi OS thiếu bộ nhớ, nó ép SQL Server trả bộ nhớ (working set trim), hiệu năng dao động, nặng hơn là phân trang ra đĩa.
-
-Quy tắc khởi điểm: chừa cho OS khoảng 10–20% RAM, tối thiểu 4 GB. Máy 32 GB đặt khoảng 26–28 GB; máy 64 GB đặt khoảng 54–56 GB. Sau đó theo dõi `Available MBytes` của OS (nên còn trên vài GB) để chỉnh.
+Quy tắc khởi điểm: chừa cho OS khoảng 10–20% RAM, tối thiểu 4 GB, rồi theo dõi counter `Available MBytes` của Windows để chỉnh.
 
 ```sql
 EXEC sp_configure 'show advanced options', 1; RECONFIGURE;
@@ -25,14 +19,12 @@ EXEC sp_configure 'max server memory (MB)', 27648;  -- máy 32 GB
 RECONFIGURE;
 ```
 
-Hai thiết lập đi kèm:
-- **Lock Pages in Memory** (quyền Windows cấp cho tài khoản service): OS không đẩy buffer pool ra pagefile. Chỉ bật khi đã đặt `max server memory`, nếu không OS có thể thiếu RAM nghiêm trọng.
-- **Instant File Initialization** (quyền "Perform volume maintenance tasks"): file data được cấp phát mà không phải ghi số 0, tăng file và restore nhanh hơn nhiều. Log file vẫn phải ghi số 0; từ SQL Server 2022, lần tăng log tới 64 MB mới được hưởng IFI.
+Hai quyền Windows đi kèm: **Lock Pages in Memory** (OS không đẩy buffer pool ra pagefile; chỉ bật khi đã đặt `max server memory`) và **Instant File Initialization** (file data cấp phát không phải ghi số 0, tăng file và restore nhanh hơn nhiều; file log vẫn phải ghi số 0, trừ các lần tăng nhỏ tới 64 MB từ SQL Server 2022).
 
-#### Song song: cost threshold và MAXDOP
-Optimizer chỉ cân nhắc plan song song khi cost ước lượng của plan tuần tự vượt `cost threshold for parallelism`. Mặc định là 5, con số đặt ra từ thời phần cứng cũ. Với giá trị này, cả những truy vấn OLTP nhỏ cũng chạy song song: tốn thêm worker, tốn đồng bộ giữa các luồng (wait `CXPACKET`, `CXCONSUMER`), trong khi nhanh hơn không đáng kể.
+##### Song song: cost threshold và MAXDOP
+Optimizer chỉ cân nhắc plan song song khi cost ước lượng của plan tuần tự vượt `cost threshold for parallelism`. Mặc định là 5, quá thấp với phần cứng hiện nay: cả truy vấn OLTP nhỏ cũng chạy song song, tốn thêm worker và thời gian đồng bộ giữa các luồng (wait `CXPACKET`) mà nhanh hơn không đáng kể.
 
-`max degree of parallelism` (MAXDOP) giới hạn số luồng cho một toán tử song song. Hướng dẫn của Microsoft: một NUMA node có tối đa 8 logical processor thì MAXDOP không vượt số đó; nhiều hơn 8 thì đặt 8; nhiều NUMA node thì không vượt số logical processor mỗi node, tối đa 16. Từ SQL Server 2019, trình cài đặt tự đề xuất giá trị này.
+`max degree of parallelism` (MAXDOP) giới hạn số luồng cho một toán tử song song. Hướng dẫn của Microsoft: không vượt số logical processor của một NUMA node, và thường không quá 8.
 
 ```sql
 EXEC sp_configure 'cost threshold for parallelism', 50;
@@ -40,398 +32,342 @@ EXEC sp_configure 'max degree of parallelism', 8;
 RECONFIGURE;
 ```
 
-Cost threshold 50 là điểm khởi đầu phổ biến, không phải con số đúng cho mọi hệ thống. Cách chỉnh có căn cứ: lấy phân bố `StatementSubTreeCost` của các plan trong cache rồi chọn ngưỡng sao cho truy vấn OLTP nằm dưới, truy vấn báo cáo nằm trên.
+50 là điểm khởi đầu phổ biến, không phải đáp án cho mọi hệ thống. Cách chỉnh có căn cứ: lấy phân bố cost (`StatementSubTreeCost`) của các plan trong cache, chọn ngưỡng sao cho truy vấn OLTP nằm dưới, truy vấn báo cáo nằm trên.
 
-#### Plan cache: optimize for ad hoc workloads
-Ứng dụng gửi SQL ghép chuỗi sinh mỗi câu một plan dùng đúng một lần, chiếm plan cache. Bật `optimize for ad hoc workloads` thì lần đầu SQL Server chỉ lưu một plan stub (vài trăm byte); lần thứ hai câu đó chạy lại mới lưu plan đầy đủ. Kiểm tra mức lãng phí:
+##### Plan cache và các thiết lập nhỏ
+Ứng dụng gửi SQL ghép chuỗi sinh mỗi câu một plan dùng đúng một lần, chiếm chỗ plan cache. `optimize for ad hoc workloads` cho lần chạy đầu chỉ lưu một plan stub vài trăm byte, lần thứ hai mới lưu plan đầy đủ. `backup compression default = 1` làm backup nhỏ hơn và thường nhanh hơn vì bớt I/O, đổi lại tốn CPU lúc backup.
 
 ```sql
 SELECT objtype, COUNT(*) AS plans,
        SUM(CAST(size_in_bytes AS bigint)) / 1048576 AS size_mb
 FROM sys.dm_exec_cached_plans
 WHERE usecounts = 1
-GROUP BY objtype;
+GROUP BY objtype;   -- plan chỉ dùng một lần đang chiếm bao nhiêu
 ```
 
-Thêm `backup compression default = 1`: backup nhỏ hơn và thường nhanh hơn vì bớt I/O, đổi lại tốn CPU lúc backup.
+##### Bản vá và cách thay đổi an toàn
+Từ SQL Server 2017 chỉ còn Cumulative Update (CU). Một bản RTM chưa cài CU nào đang thiếu hàng trăm bản sửa lỗi, có cả lỗi optimizer. Cài CU trong khung bảo trì, thử ở môi trường test trước, có kế hoạch gỡ.
 
-#### Bản vá
-Từ SQL Server 2017 không còn Service Pack, chỉ có Cumulative Update (CU). Một bản 2019 RTM chưa cài CU nào đang thiếu hàng trăm bản sửa lỗi, trong đó có lỗi hiệu năng và lỗi optimizer. Cài CU trong khung bảo trì, thử trên môi trường test trước, có kế hoạch rollback.
+Về rủi ro triển khai: các lệnh `sp_configure` ở trên có hiệu lực ngay sau `RECONFIGURE`, không cần restart. Hạ `max server memory` làm SQL Server nhả buffer pool dần, nên làm ngoài giờ cao điểm. Đổi cost threshold hay MAXDOP làm mất plan cache liên quan, CPU tăng ngắn vì biên dịch lại. Cài CU, cấp Lock Pages in Memory và IFI cần restart service.
 
-#### Trong báo cáo
-- Cụm log tự luyện: không giới hạn bộ nhớ trên máy 32 GB, `cost threshold` = 5, `optimize for ad hoc` = 0, nén backup = 0, SQL Server 2019 RTM chưa cài CU; `CXCONSUMER` 460 triệu lượt chờ (Cụm 1 – Mục 9).
-- Cụm log thi chính thức: SQL Server dùng khoảng 96% RAM máy 64 GB (Cụm 3 – Mục 11).
+> **Cảnh báo:** Đặt MAXDOP = 1 toàn server để "hết CXPACKET" làm truy vấn báo cáo chậm hẳn. Giới hạn song song nên làm ở cost threshold, hoặc từng truy vấn bằng hint.
 
-#### Cách sửa
-- Các lệnh `sp_configure` ở trên có hiệu lực ngay sau `RECONFIGURE`, không cần restart. Đổi `max server memory` xuống thấp hơn mức đang dùng làm SQL Server nhả buffer pool dần, nên chạy ngoài giờ cao điểm.
-- Đổi cost threshold hoặc MAXDOP xoá plan cache liên quan, nên có một đợt biên dịch lại tăng CPU ngắn.
-- Cài CU, cấp quyền Lock Pages in Memory và IFI cần restart service: làm trong khung bảo trì.
+#### Cách show off
+Câu chuyện thật của bạn ở đây là phát hiện, không phải tự tay đổi cấu hình: trong đợt rà soát, bạn chạy `sp_Blitz` và đọc `sys.configurations` trên từng cụm, thấy một cụm lưu log luyện tập vẫn để nguyên mặc định (không giới hạn bộ nhớ, cost threshold 5, chưa cài CU nào). Việc đổi cấu hình thuộc DBA. Hãy kể đúng như vậy, và kể cách bạn tránh kết luận vội.
 
-#### Kiểm chứng
-- Chụp wait stats trước và sau (`sys.dm_os_wait_stats`, lấy chênh lệch theo thời gian, không lấy tích luỹ từ lúc khởi động).
-- So `CXPACKET` + `CXCONSUMER`, CPU trung bình, `Page life expectancy`, `Available MBytes` của OS.
-- Chạy lại `sp_Blitz` để xác nhận các mục cảnh báo đã hết.
+> **Ví dụ:** "Khi rà các cụm SQL Server của hệ thống thi, tôi thấy một cụm vẫn để cấu hình như lúc cài: SQL Server được phép dùng hết RAM, ngưỡng song song vẫn là 5, và chưa cài bản vá nào từ khi lên 2019. Wait stats cho thấy rất nhiều trao đổi song song, nhưng tôi không kết luận ngay là song song gây hại, vì wait loại đó phần lớn vô hại; tôi xem thời gian chờ thật và các truy vấn song song nặng nhất trước. Đề xuất của tôi chia hai mức: các thiết lập đổi được online thì làm ngoài giờ cao điểm, còn cài CU và cấp quyền Windows thì gom vào một khung bảo trì có restart. Mỗi mục kèm cách đo trước và sau, chủ yếu là wait stats chụp theo khoảng thời gian và lượng RAM còn trống của Windows."
 
-#### Bẫy
-- Đặt `max server memory` quá thấp làm buffer pool nhỏ, đọc đĩa tăng. Con số phải dựa trên RAM máy và các dịch vụ chạy chung.
-- `CXCONSUMER` thường được coi là wait vô hại (phía consumer của trao đổi song song). Số lượt chờ lớn cho thấy có nhiều truy vấn song song, nhưng tín hiệu cần sửa là `CXPACKET` và thời gian chờ, không phải số lượt của `CXCONSUMER`.
-- Đặt MAXDOP = 1 toàn server để "hết CXPACKET" làm truy vấn báo cáo chậm hẳn. Giới hạn song song nên làm ở cost threshold, hoặc từng truy vấn bằng hint `MAXDOP`.
+Điểm ăn điểm:
+- Nói được thay đổi nào online, thay đổi nào cần restart, thay đổi nào gây một đợt biên dịch lại.
+- Coi 50 là điểm xuất phát rồi chỉnh theo phân bố cost thật, không đọc thuộc lòng một con số.
+- Đo wait stats theo khoảng thời gian, không dùng số tích luỹ từ lúc khởi động.
+- Phân biệt rõ phần mình phát hiện và đề xuất với phần DBA triển khai. Nếu chưa biết đề xuất đã áp dụng chưa, nói thẳng là "đề xuất".
 
-#### Câu hỏi phỏng vấn
-- **"Vì sao không để SQL Server dùng toàn bộ RAM của máy?"** Ngoài buffer pool, tiến trình còn dùng bộ nhớ cho thread stack, CLR, linked server provider, backup buffer; OS và các dịch vụ khác cũng cần RAM. Khi OS thiếu, nó ép SQL Server trả bộ nhớ, hiệu năng dao động, có thể phân trang ra đĩa. Đặt `max server memory` chừa 10–20% (tối thiểu 4 GB) rồi theo dõi `Available MBytes`.
-- **"Mặc định cost threshold for parallelism là 5 thì có vấn đề gì, và bạn chọn giá trị mới thế nào?"** Với phần cứng hiện nay, cost 5 khiến cả truy vấn OLTP nhỏ chạy song song, tốn worker và wait đồng bộ. Tôi bắt đầu từ 50, sau đó lấy phân bố cost của plan trong cache để chỉnh sao cho OLTP nằm dưới ngưỡng, báo cáo nằm trên.
-- **"Optimize for ad hoc workloads giải quyết vấn đề gì, và có mặt trái không?"** Nó chỉ lưu plan stub ở lần chạy đầu, tránh plan dùng một lần chiếm plan cache. Mặt trái nhỏ: câu chạy lần hai phải biên dịch lại một lần. Gốc vấn đề vẫn là code ghép chuỗi, nên sửa sang tham số hoá.
-- **"Server SQL Server 2019 RTM chưa cài CU nào, bạn xử lý ra sao?"** Lên kế hoạch cài CU mới nhất: đọc danh sách lỗi đã biết, thử trên môi trường test, cài trong khung bảo trì, chụp wait stats và hiệu năng trước và sau, có bản backup và kế hoạch gỡ CU nếu cần.
-- **"Bạn thấy CXCONSUMER 460 triệu lượt chờ, có kết luận là song song đang gây hại không?"** Chưa. `CXCONSUMER` là phía chờ vô hại của trao đổi song song. Tôi xem `CXPACKET` theo thời gian chờ, CPU, và các truy vấn song song nặng nhất trong Query Store trước khi kết luận; cost threshold 5 là nguyên nhân đáng sửa đầu tiên.
+#### Câu hỏi vặn
+- **"Vì sao không để SQL Server dùng toàn bộ RAM của máy?"** Ngoài buffer pool, tiến trình còn cần bộ nhớ cho thread stack, CLR, linked server provider, backup buffer; OS và các dịch vụ khác cũng cần RAM. Khi OS thiếu, nó ép SQL Server trả bộ nhớ, hiệu năng dao động. Tôi chừa 10–20% (tối thiểu 4 GB) rồi theo dõi `Available MBytes` để chỉnh.
+- **"Cost threshold mặc định là 5 thì có vấn đề gì, và anh chọn giá trị mới thế nào?"** Với phần cứng hiện nay, cost 5 khiến truy vấn OLTP nhỏ cũng chạy song song, tốn worker và thời gian đồng bộ. Tôi bắt đầu từ 50, sau đó lấy phân bố cost của plan trong cache để chỉnh sao cho OLTP nằm dưới ngưỡng, báo cáo nằm trên.
+- **"Wait CXCONSUMER có hàng trăm triệu lượt, có phải song song đang gây hại không?"** Chưa kết luận được. `CXCONSUMER` là phía chờ thường vô hại của trao đổi song song, và số lượt không nói lên thời gian. Tôi xem `CXPACKET` theo thời gian chờ trong giờ cao điểm, CPU, và các truy vấn song song nặng nhất trong Query Store. Cost threshold 5 là nguyên nhân đáng sửa đầu tiên.
+- **"Server 2019 RTM chưa cài CU nào, anh xử lý ra sao?"** Lên kế hoạch cài CU mới nhất: đọc danh sách lỗi đã biết, thử trên môi trường test, cài trong khung bảo trì vì cần restart, chụp wait stats và hiệu năng trước và sau, có backup và cách gỡ CU nếu hồi quy.
+- **"Đổi cost threshold xong thấy CPU vọt lên vài phút, có phải đổi sai không?"** Không hẳn. Đổi thiết lập này xoá plan cache liên quan nên mọi truy vấn biên dịch lại, CPU tăng ngắn. Phải so sau khi hệ thống ổn định, cùng khung giờ với trước đó.
+- **"Phần cấu hình này anh tự đổi trên production à?"** Không. Tôi phát hiện trong đợt rà soát và viết đề xuất kèm cách đo; đổi cấu hình server là việc của DBA. Nếu bị hỏi tiếp về kết quả, tôi chỉ nói số đo trước và sau khi thật sự có số đó.
 
-#### Tóm tắt
-- `max server memory` mặc định là không giới hạn; luôn đặt, chừa 10–20% cho OS.
-- Cost threshold 5 quá thấp; 50 là điểm khởi đầu, chỉnh theo phân bố cost thật.
-- MAXDOP theo số core mỗi NUMA node, thường không quá 8.
+#### Bẫy cần tránh
+- Nói "tôi đặt max server memory bằng 80% RAM" như công thức cố định. Nói thay: chừa cho OS theo RAM máy và các dịch vụ chạy chung, rồi chỉnh theo `Available MBytes`.
+- Dùng số lượt chờ thay cho thời gian chờ để kết luận.
+- Nhận việc đổi cấu hình là của mình khi thực tế chỉ đề xuất.
+
+#### Nhớ nhanh
+- `max server memory` mặc định gần như không giới hạn; luôn đặt, chừa 10–20% cho OS.
+- Cost threshold 5 quá thấp; 50 là điểm khởi đầu, chỉnh theo phân bố cost thật. MAXDOP theo NUMA node, thường không quá 8.
 - `optimize for ad hoc workloads` và `backup compression default` gần như luôn nên bật.
-- Cài CU định kỳ; IFI và Lock Pages in Memory là quyền Windows, cần restart.
+- `sp_configure` có hiệu lực ngay; CU, Lock Pages in Memory, IFI cần restart.
 
 #### Bài tập
-1. Viết truy vấn liệt kê các thiết lập `max server memory (MB)`, `cost threshold for parallelism`, `max degree of parallelism`, `optimize for ad hoc workloads`, `backup compression default` cùng giá trị đang chạy.
+1. Viết truy vấn liệt kê giá trị đang chạy của năm thiết lập: max server memory, cost threshold, MAXDOP, optimize for ad hoc workloads, backup compression default.
    **Đáp án:** `SELECT name, value_in_use FROM sys.configurations WHERE name IN ('max server memory (MB)', 'cost threshold for parallelism', 'max degree of parallelism', 'optimize for ad hoc workloads', 'backup compression default');`
 2. Máy 64 GB chạy riêng SQL Server, 2 NUMA node, mỗi node 12 logical processor. Đề xuất `max server memory` và MAXDOP.
-   **Đáp án:** Khoảng 56 GB (57.344 MB), chừa 8 GB cho OS rồi theo dõi `Available MBytes`. MAXDOP: mỗi node 12 logical processor, tối đa bằng số đó; giá trị 8 là lựa chọn an toàn phổ biến.
-3. Sau khi đổi cost threshold từ 5 lên 50, CPU tăng vọt khoảng 5 phút rồi về thấp hơn trước. Giải thích.
-   **Đáp án:** Đổi thiết lập làm mất plan cache liên quan, các truy vấn phải biên dịch lại nên CPU tăng ngắn. Sau đó nhiều truy vấn nhỏ chạy tuần tự, bớt chi phí song song nên CPU thấp hơn.
+   **Đáp án:** Khoảng 56 GB (57.344 MB), chừa 8 GB cho OS rồi theo dõi `Available MBytes`. MAXDOP tối đa bằng số logical processor mỗi node (12); 8 là lựa chọn an toàn phổ biến.
 
 ### Bài 20.2. TempDB và transaction log
 
-#### Mục tiêu
-- Sau bài này, bạn mô tả được tempdb chứa những gì và cấu hình nó đúng cách.
-- Bạn giải thích được cơ chế ghi log, `WRITELOG`, VLF và vì sao log không được tái sử dụng.
-- Bạn chọn được recovery model theo RPO và đọc được `log_reuse_wait_desc`.
+#### Kiến thức
+Hai thành phần này ít khi được nghĩ tới cho tới ngày chúng đầy. Khi đó cả instance dừng ghi, nên người làm backend senior phải hiểu chúng chứa gì và vì sao phình.
 
-#### TempDB chứa gì
-TempDB là database dùng chung cho cả instance, tạo lại mỗi lần SQL Server khởi động. Nó chứa:
+##### TempDB chứa gì
+TempDB dùng chung cho cả instance và được tạo lại mỗi lần SQL Server khởi động. Bên trong có:
 - Đối tượng người dùng: `#temp`, `##global`, bảng biến (bảng biến cũng nằm trong tempdb, không phải "chỉ trong RAM").
-- Đối tượng nội bộ: work table cho sort, hash spill, spool, cursor; sort khi tạo index với `SORT_IN_TEMPDB = ON`.
-- Version store: phiên bản cũ của dòng khi bật RCSI, Snapshot isolation, online index rebuild, trigger (bảng `inserted`/`deleted`), readable secondary.
+- Đối tượng nội bộ: work table cho sort, hash spill, spool, cursor.
+- Version store: phiên bản cũ của dòng khi bật RCSI hoặc Snapshot isolation, online index rebuild, bảng `inserted`/`deleted` của trigger.
 
-Vì mọi DB đều dùng chung tempdb, một truy vấn spill lớn hoặc một transaction mở lâu dưới RCSI có thể làm tempdb phình và ảnh hưởng cả instance.
+Vì mọi DB dùng chung, một truy vấn spill lớn hay một transaction mở lâu dưới RCSI có thể làm tempdb phình và kéo cả instance theo.
 
-Cấu hình đúng:
-- Đặt trên ổ riêng, nhanh (SSD/NVMe), không đặt ở ổ C: của hệ điều hành. Ổ C: đầy thì cả Windows lẫn SQL Server gặp sự cố.
-- Số file data bằng số logical processor, tối đa 8 lúc đầu; nếu vẫn có tranh chấp trang cấp phát (wait `PAGELATCH_UP` trên trang PFS/GAM/SGAM của tempdb) thì thêm theo bội số 4.
-- Các file cùng kích thước và cùng mức tăng, vì SQL Server phân phối theo proportional fill: file to hơn nhận nhiều việc hơn, mất tác dụng chia tải.
-- Từ SQL Server 2016, hành vi của trace flag 1117/1118 đã là mặc định cho tempdb. SQL Server 2019 có thêm memory-optimized tempdb metadata để giảm tranh chấp trên bảng hệ thống.
+Cấu hình đúng: đặt trên ổ riêng, nhanh, không phải ổ C của hệ điều hành; số file data bằng số logical processor, tối đa 8 lúc đầu, còn tranh chấp trang cấp phát (wait `PAGELATCH_UP` trên trang PFS/GAM/SGAM) thì thêm theo bội số 4; các file cùng kích thước, cùng mức tăng, vì SQL Server chia việc theo tỉ lệ dung lượng trống của từng file.
 
-#### Transaction log hoạt động thế nào
-Mọi thay đổi dữ liệu được ghi vào log trước (write-ahead logging), trang dữ liệu sửa trong bộ nhớ được ghi xuống đĩa sau (checkpoint). Khi commit, SQL Server phải đợi bản ghi log được ghi bền xuống đĩa rồi mới trả kết quả. Thời gian đợi này là wait `WRITELOG`. Log ghi tuần tự nên cần ổ có độ trễ ghi thấp; `WRITELOG` cao thường do ổ log chậm, do quá nhiều commit nhỏ (mỗi dòng một transaction), hoặc log chung ổ với data.
+##### Transaction log hoạt động thế nào
+Mọi thay đổi được ghi vào log trước (write-ahead logging), trang dữ liệu sửa trong bộ nhớ được ghi xuống đĩa sau. Khi commit, SQL Server phải đợi bản ghi log xuống đĩa bền rồi mới trả kết quả; thời gian đợi đó là wait `WRITELOG`. `WRITELOG` cao thường do ổ log chậm, log chung ổ với data, hoặc ứng dụng commit từng dòng một.
 
-File log được chia thành các Virtual Log File (VLF). Log là vòng tròn: khi phần đầu không còn cần nữa, SQL Server quay lại ghi đè (log truncation). Nếu có lý do giữ lại, log phải tăng kích thước.
-
-`log_reuse_wait_desc` cho biết lý do log chưa được tái sử dụng:
+File log là vòng tròn, chia thành các Virtual Log File (VLF). Khi phần đầu không còn cần, SQL Server quay lại ghi đè (truncation). Nếu có lý do giữ lại, log phải tăng kích thước. Lý do nằm ở cột `log_reuse_wait_desc`:
 
 | Giá trị | Ý nghĩa | Hướng xử lý |
 |---|---|---|
 | `LOG_BACKUP` | DB ở FULL/BULK_LOGGED, chưa backup log | Tạo job `BACKUP LOG` định kỳ |
 | `ACTIVE_TRANSACTION` | Có transaction mở lâu | Tìm bằng `DBCC OPENTRAN`, `sys.dm_tran_active_transactions` |
-| `REPLICATION` | Log Reader chưa đọc xong | Kiểm tra agent replication, CDC |
-| `AVAILABILITY_REPLICA` | Replica AG chưa nhận/redo kịp | Kiểm tra mạng, độ trễ redo |
+| `REPLICATION` | Log Reader hoặc CDC chưa đọc xong | Kiểm tra agent replication, CDC |
+| `AVAILABILITY_REPLICA` | Replica AG chưa nhận hoặc redo kịp | Kiểm tra mạng, độ trễ redo |
 | `NOTHING` | Đang tái sử dụng bình thường | |
 
 ```sql
-SELECT name, recovery_model_desc, log_reuse_wait_desc
-FROM sys.databases;
-
-SELECT DB_NAME(database_id) AS db, total_log_size_in_bytes / 1048576 AS log_mb,
-       used_log_space_in_percent
-FROM sys.dm_db_log_space_usage;  -- chạy trong từng DB
+SELECT name, recovery_model_desc, log_reuse_wait_desc FROM sys.databases;
+SELECT total_log_size_in_bytes / 1048576 AS log_mb, used_log_space_in_percent
+FROM sys.dm_db_log_space_usage;   -- chạy trong từng DB
 ```
 
-#### Recovery model và RPO
-- **SIMPLE**: log tự truncate sau checkpoint. Không backup log được, chỉ khôi phục tới lần backup full/differential gần nhất.
-- **FULL**: giữ log tới khi backup log. Khôi phục được tới một thời điểm bất kỳ (point-in-time) nếu chuỗi backup log liên tục.
-- **BULK_LOGGED**: như FULL nhưng ghi log tối thiểu cho thao tác bulk; mất point-in-time trong khoảng có thao tác bulk.
+##### Recovery model đi theo RPO
+- **SIMPLE**: log tự truncate sau checkpoint; chỉ khôi phục được tới bản backup full/differential gần nhất.
+- **FULL**: giữ log tới khi backup log; khôi phục được tới một thời điểm bất kỳ nếu chuỗi backup log liền mạch.
+- **BULK_LOGGED**: như FULL nhưng ghi log tối thiểu cho thao tác bulk; mất khả năng khôi phục theo thời điểm trong khoảng có thao tác bulk.
 
-RPO (Recovery Point Objective) là lượng dữ liệu tối đa được phép mất khi sự cố. DB có tiền, giao dịch, kết quả thi cần FULL và backup log 5–15 phút. DB log kỹ thuật, warehouse nạp lại được từ nguồn có thể SIMPLE.
+RPO là lượng dữ liệu tối đa được phép mất khi sự cố. DB có tiền, giao dịch, kết quả thi cần FULL và backup log mỗi 5–15 phút. DB log kỹ thuật hay kho dữ liệu nạp lại được từ nguồn có thể để SIMPLE.
 
-#### VLF và cách tăng log
-Mỗi lần log tăng sinh thêm một số VLF. Log tăng từng bước nhỏ (mặc định cũ là 10% hoặc 1 MB) sinh hàng nghìn VLF, làm backup log, recovery khi khởi động và đồng bộ AG chậm. Đặt kích thước ban đầu đủ lớn và `FILEGROWTH` cố định (ví dụ 512 MB–1 GB). Đếm VLF:
+##### VLF, shrink và tăng log
+Log tăng từng bước nhỏ sinh hàng nghìn VLF, làm backup log, khởi động lại và đồng bộ AG chậm. Đặt kích thước ban đầu đủ lớn và `FILEGROWTH` cố định (512 MB–1 GB). Đếm VLF bằng `SELECT COUNT(*) FROM sys.dm_db_log_info(DB_ID());`.
 
-```sql
-SELECT COUNT(*) AS vlf_count FROM sys.dm_db_log_info(DB_ID());
-```
+Shrink log chỉ sau khi đã sửa nguyên nhân, và về kích thước hợp lý chứ không về 0. Không shrink file data định kỳ: nó di chuyển trang từ cuối lên đầu, gây phân mảnh index nặng, rồi file lại tăng.
 
-Shrink log chỉ sau khi đã sửa nguyên nhân (đã có backup log, đã đóng transaction treo), và shrink về kích thước hợp lý chứ không về 0. Không shrink file data định kỳ: shrink data di chuyển trang từ cuối file lên đầu, gây phân mảnh index nặng, rồi file lại tăng.
+> **Cảnh báo:** Chuyển FULL sang SIMPLE rồi quay lại FULL làm đứt chuỗi backup log. Phải chạy một backup full hoặc differential mới để bắt đầu chuỗi mới.
 
-#### Trong báo cáo
-- Một DB log 53,3 GB đầy 99,97%, kẹt `LOG_BACKUP`; `WRITELOG` 3,58 triệu giây trên cả cụm (Cụm 1 – Mục 1).
-- DB kho câu hỏi log đầy 99,12%; ổ D: còn 9,16% (Cụm 6 – Mục 1, 6).
-- TempDB 57,5 GB nằm trên ổ C: còn 9,59% trống (Cụm 3 – Mục 1).
-- DB warehouse ở SIMPLE nhưng kẹt `ACTIVE_TRANSACTION` (Cụm 4 – Mục 15): SIMPLE không cứu được khi một transaction mở lâu.
+#### Cách show off
+Đây là phần bạn có phát hiện thật và rất dễ kể: trong đợt rà soát, một DB log khoảng 50 GB đã đầy gần 100% vì không có job backup log; một cụm khác để tempdb gần 60 GB trên ổ C chỉ còn chưa tới 10% trống. Điểm senior không nằm ở chỗ thấy log đầy, mà ở chỗ bạn phản biện một đề xuất nghe rất hợp lý: chuyển hàng loạt DB sang SIMPLE cho nhẹ log.
 
-#### Cách sửa
-- Chọn recovery model theo RPO của từng DB. DB ở FULL có job backup log 5–15 phút (Ola Hallengren Maintenance Solution là lựa chọn phổ biến).
-- Sau khi backup log chạy đều, shrink log một lần về kích thước hợp lý, đặt `FILEGROWTH` cố định.
-- Chuyển tempdb sang ổ riêng: `ALTER DATABASE tempdb MODIFY FILE (NAME = tempdev, FILENAME = 'T:\tempdb\tempdb.mdf');` cho từng file, có hiệu lực sau restart.
-- Cảnh báo theo % log đã dùng (ví dụ trên 70%), dung lượng ổ (dưới 15%), và `log_reuse_wait_desc` khác `NOTHING` kéo dài.
+> **Ví dụ:** "Trong đợt rà soát, tôi gặp một database log khoảng 50 GB đã đầy gần hết. Cột `log_reuse_wait_desc` báo `LOG_BACKUP`, tức DB ở FULL nhưng chưa ai đặt job backup log, nên log chỉ tăng chứ không quay vòng. Có ý kiến chuyển hết sang SIMPLE cho xong, nhưng cụm đó có DB thanh toán, chuyển SIMPLE nghĩa là khi sự cố sẽ mất mọi giao dịch từ bản backup gần nhất. Tôi đề xuất quyết định theo RPO từng DB: DB nghiệp vụ giữ FULL và có job backup log vài phút một lần, DB log kỹ thuật thì SIMPLE. Sau khi backup log chạy đều mới shrink log một lần và đặt bước tăng cố định. Tôi cũng thấy một DB kho dữ liệu ở SIMPLE mà log vẫn đầy vì một transaction mở lâu, nên SIMPLE không phải thuốc vạn năng."
 
-#### Kiểm chứng
-- `used_log_space_in_percent` dao động lên xuống theo chu kỳ backup log thay vì tăng một chiều.
-- `WRITELOG` trung bình mỗi lượt chờ (tổng thời gian / số lượt) giảm; độ trễ ghi ổ log (`sys.dm_io_virtual_file_stats`) dưới vài ms.
+Điểm ăn điểm:
+- Bắt đầu từ `log_reuse_wait_desc`, không bắt đầu bằng shrink.
+- Recovery model là quyết định nghiệp vụ theo RPO, không phải theo dung lượng log.
+- Thứ tự xử lý khi ổ sắp đầy: backup log ngay, rồi mới job định kỳ, rồi mới shrink.
+- Biết SIMPLE vẫn có thể đầy log khi có transaction mở lâu, replication hay AG.
 
-#### Bẫy
-- Báo cáo đề xuất chuyển SIMPLE hàng loạt, kể cả ở cụm có DB giao dịch thanh toán (Cụm 6). Trước khi chuyển phải hỏi RPO: SIMPLE nghĩa là sự cố sẽ mất dữ liệu từ lần backup full/diff gần nhất. Nếu cần khôi phục theo thời điểm, giữ FULL và thêm job backup log.
-- Chuyển FULL sang SIMPLE rồi quay lại FULL làm đứt chuỗi backup log; phải chạy một backup full hoặc differential mới để bắt đầu chuỗi mới.
-- `DELAYED_DURABILITY = FORCED` giảm `WRITELOG` nhưng có thể mất các commit gần nhất khi sự cố; chỉ dùng cho dữ liệu chấp nhận mất.
+#### Câu hỏi vặn
+- **"Log đầy 99% dù DB nhỏ, anh kiểm tra gì đầu tiên?"** Cột `log_reuse_wait_desc` trong `sys.databases` để biết vì sao log không được tái sử dụng: thiếu backup log, transaction mở lâu, replication chưa đọc, replica AG chậm. Sửa theo đúng lý do, sau đó mới cân nhắc shrink.
+- **"Chuyển hết sang SIMPLE cho nhẹ log được không?"** Chỉ với DB chấp nhận mất dữ liệu tới bản backup gần nhất. DB thanh toán, kết quả thi cần khôi phục theo thời điểm nên giữ FULL kèm job backup log. Tôi hỏi RPO của từng DB trước khi đổi.
+- **"DB ở SIMPLE mà log vẫn đầy, vì sao?"** SIMPLE chỉ truncate được phần log không còn cần. Transaction mở lâu, replication hoặc CDC chưa đọc log, hoặc AG đều giữ log lại. Tìm transaction bằng `DBCC OPENTRAN` hoặc `sys.dm_tran_active_transactions`.
+- **"Tempdb nên cấu hình thế nào trên server 16 core?"** Ổ riêng, nhanh; bắt đầu 8 file data cùng kích thước và cùng mức tăng; theo dõi `PAGELATCH_UP` trên trang cấp phát, còn tranh chấp thì thêm theo bội số 4. Kích thước ban đầu đủ lớn để khỏi phải tăng trong ngày.
+- **"WRITELOG cao thì nguyên nhân thường gặp là gì?"** Ổ log chậm, log chung ổ với data, hoặc ứng dụng commit từng dòng. Tôi đo độ trễ ghi file log bằng `sys.dm_io_virtual_file_stats`; nếu ổ ổn thì gom thao tác vào transaction vừa phải hoặc ghi theo lô.
+- **"Bật DELAYED_DURABILITY để giảm WRITELOG thì sao?"** Commit trả về trước khi log xuống đĩa, nên sự cố có thể mất các commit gần nhất. Chỉ dùng cho dữ liệu chấp nhận mất, như log hành vi, không dùng cho bài nộp hay giao dịch.
+- **"Bật RCSI rồi tempdb phình, anh theo dõi bằng gì?"** Version store nằm trong tempdb; transaction mở lâu giữ nó không được dọn. Tôi xem `sys.dm_tran_version_store_space_usage` và transaction snapshot lâu nhất trong `sys.dm_tran_active_snapshot_database_transactions`.
 
-#### Câu hỏi phỏng vấn
-- **"Log đầy 99% dù DB nhỏ, bạn kiểm tra gì đầu tiên?"** `SELECT name, recovery_model_desc, log_reuse_wait_desc FROM sys.databases` để biết vì sao log không được tái sử dụng: thiếu backup log, transaction mở lâu, replication chưa đọc log, replica AG chậm. Sửa theo đúng lý do, sau đó mới cân nhắc shrink.
-- **"Chuyển hết DB sang SIMPLE cho nhẹ log có được không?"** Chỉ với DB chấp nhận mất dữ liệu tới lần backup full/diff gần nhất. DB thanh toán, kết quả thi cần point-in-time recovery nên giữ FULL và có job backup log. Quyết định dựa trên RPO, không dựa trên dung lượng log.
-- **"DB ở SIMPLE mà log vẫn đầy, vì sao?"** SIMPLE chỉ truncate được phần log không còn cần. Transaction mở lâu (`ACTIVE_TRANSACTION`), replication/CDC chưa đọc log, hoặc AG đều giữ log lại. Tìm transaction bằng `DBCC OPENTRAN` hoặc `sys.dm_tran_active_transactions`.
-- **"Tempdb nên cấu hình thế nào trên server 16 core?"** Ổ riêng, nhanh; bắt đầu 8 file data cùng kích thước và cùng mức tăng; theo dõi `PAGELATCH_UP` trên trang cấp phát, còn tranh chấp thì thêm theo bội số 4. Kích thước ban đầu đặt đủ lớn để khỏi tăng trong ngày.
-- **"WRITELOG cao thì nguyên nhân thường gặp và cách giảm là gì?"** Ổ log chậm, log chung ổ với data, hoặc ứng dụng commit từng dòng. Đo độ trễ ghi file log; chuyển log sang ổ nhanh riêng; gom nhiều thao tác vào một transaction vừa phải hoặc ghi theo lô.
+#### Bẫy cần tránh
+- Trả lời "shrink log" ngay khi nghe log đầy. Nói thay: tìm lý do trong `log_reuse_wait_desc`, sửa lý do, rồi shrink một lần.
+- Shrink file data định kỳ để "tiết kiệm đĩa".
+- Nói "bảng biến nằm trong RAM nên nhanh hơn temp table".
+- Quên rằng đổi recovery model làm đứt chuỗi backup log.
 
-#### Tóm tắt
-- TempDB chứa temp table, bảng biến, spill, version store; đặt ổ riêng, nhiều file bằng nhau.
-- Commit chờ ghi log bền xuống đĩa; `WRITELOG` phản ánh độ trễ ghi log.
-- `log_reuse_wait_desc` chỉ đúng lý do log không truncate.
+#### Nhớ nhanh
+- TempDB chứa temp table, bảng biến, spill, version store; ổ riêng, nhiều file bằng nhau.
+- Commit chờ log xuống đĩa; `WRITELOG` phản ánh độ trễ ghi log.
+- `log_reuse_wait_desc` nói đúng lý do log không quay vòng.
 - Recovery model chọn theo RPO; FULL luôn đi kèm job backup log.
 - Log tăng theo bước cố định đủ lớn; không shrink file data định kỳ.
 
 #### Bài tập
 1. DB ở FULL, log 40 GB đầy 98%, `log_reuse_wait_desc = LOG_BACKUP`, ổ còn 5%. Liệt kê các bước xử lý theo thứ tự.
-   **Đáp án:** Chạy `BACKUP LOG` ngay (ra ổ khác còn chỗ) để giải phóng log; tạo job backup log 5–15 phút; khi log đã truncate đều, shrink log về kích thước hợp lý một lần; đặt `FILEGROWTH` cố định; thêm cảnh báo % log và dung lượng ổ. Không chuyển SIMPLE nếu chưa hỏi RPO.
-2. Viết truy vấn đếm số VLF của DB hiện tại và cho biết khi nào con số đó đáng lo.
-   **Đáp án:** `SELECT COUNT(*) FROM sys.dm_db_log_info(DB_ID());`. Vài trăm là bình thường với log lớn; hàng nghìn VLF thường do tăng nhỏ nhiều lần, làm recovery và backup log chậm.
-3. Giải thích vì sao bật RCSI có thể làm tempdb phình, và theo dõi bằng gì.
-   **Đáp án:** RCSI lưu phiên bản cũ của dòng trong version store ở tempdb; transaction mở lâu giữ version store không được dọn. Theo dõi `sys.dm_tran_version_store_space_usage` và transaction lâu nhất trong `sys.dm_tran_active_snapshot_database_transactions`.
+   **Đáp án:** Chạy `BACKUP LOG` ngay (ghi ra ổ khác còn chỗ) để log truncate; tạo job backup log 5–15 phút; khi log quay vòng đều, shrink log một lần về kích thước hợp lý; đặt `FILEGROWTH` cố định; thêm cảnh báo % log và dung lượng ổ. Không chuyển SIMPLE khi chưa hỏi RPO.
 
-### Bài 20.3. Vòng đời dữ liệu: archive, partition, dọn rác
+### Bài 20.3. Vòng đời dữ liệu: archive, partition, xoá theo lô
 
-#### Mục tiêu
-- Sau bài này, bạn giải thích được vì sao bảng nóng phải nhỏ và thiết kế được chính sách giữ dữ liệu theo bảng.
-- Bạn xoá được hàng trăm triệu dòng trên production mà không làm phình log hay khoá bảng.
-- Bạn dùng được partition switching và `TRUNCATE ... WITH (PARTITIONS ...)`.
+#### Kiến thức
+Dữ liệu chỉ tăng, ít khi tự giảm. Một bảng log hay bảng feed không có chính sách giữ dữ liệu sẽ tới lúc chậm mọi thứ: truy vấn, bảo trì, backup.
 
-#### Vì sao bảng nóng phải nhỏ
-Chi phí của một bảng lớn không chỉ là dung lượng. Index lớn có nhiều cấp B-tree hơn, scan đọc nhiều trang hơn, rebuild index và update statistics lâu hơn, backup và restore lâu hơn, buffer pool bị chiếm bởi dữ liệu cũ hiếm khi đọc. Một proc "tìm feed" quét bảng 580 triệu dòng đọc hàng trăm nghìn trang mỗi lần, dù người dùng chỉ xem dữ liệu vài tháng gần nhất.
+##### Vì sao bảng nóng phải nhỏ
+Chi phí của bảng lớn không chỉ là dung lượng. Index có nhiều cấp B-tree hơn, scan đọc nhiều trang hơn, rebuild index và update statistics lâu hơn, backup và restore lâu hơn, buffer pool bị chiếm bởi dữ liệu cũ hiếm khi đọc. Nguyên tắc: tách dữ liệu nóng (đọc ghi thường xuyên) khỏi dữ liệu lạnh (chỉ giữ để tra cứu, đối soát) và chuyển phần lạnh sang bảng archive, DB archive hoặc kho rẻ hơn.
 
-Nguyên tắc: tách dữ liệu nóng (đang được đọc/ghi thường xuyên) khỏi dữ liệu lạnh (chỉ giữ để tra cứu, đối soát). Dữ liệu lạnh chuyển sang bảng archive, DB archive, hoặc kho lạnh (file Parquet trên object storage, warehouse).
-
-#### Partition theo thời gian
-Partition chia một bảng logic thành nhiều phần vật lý theo một cột (thường là ngày hoặc mã ca thi). Lợi ích chính cho vòng đời dữ liệu là thao tác metadata thay cho xoá từng dòng:
+##### Partition theo thời gian
+Partition chia một bảng logic thành nhiều phần vật lý theo một cột, thường là ngày. Lợi ích chắc chắn cho vòng đời dữ liệu là xoá hay chuyển cả một khoảng thời gian bằng thao tác metadata:
 
 ```sql
 CREATE PARTITION FUNCTION pf_month (date)
 AS RANGE RIGHT FOR VALUES ('2026-01-01', '2026-02-01', '2026-03-01');
 CREATE PARTITION SCHEME ps_month AS PARTITION pf_month ALL TO ([PRIMARY]);
 
--- Xoá cả tháng cũ nhất: chỉ đổi metadata, gần như tức thì
-TRUNCATE TABLE dbo.ExamLog WITH (PARTITIONS (1));          -- SQL Server 2016+
-
--- Hoặc chuyển ra bảng archive cùng cấu trúc, cùng filegroup, đang rỗng
-ALTER TABLE dbo.ExamLog SWITCH PARTITION 1 TO dbo.ExamLog_Archive;
+TRUNCATE TABLE dbo.ExamLog WITH (PARTITIONS (1));          -- SQL Server 2016+, gần như tức thì
+ALTER TABLE dbo.ExamLog SWITCH PARTITION 1 TO dbo.ExamLog_Archive;  -- hoặc chuyển ra bảng rỗng
 ```
 
-Điều kiện `SWITCH`: bảng đích cùng cấu trúc cột, cùng index, cùng filegroup với partition nguồn, đích đang rỗng (hoặc đúng partition đích rỗng), index phải aligned (partition theo cùng scheme). Sliding window là quy trình định kỳ: `SPLIT` thêm partition cho tháng tới, `SWITCH`/`TRUNCATE` partition cũ nhất, `MERGE` ranh giới rỗng.
+`SWITCH` đòi bảng đích cùng cấu trúc cột và index, cùng filegroup, đang rỗng, và index phải aligned (partition theo cùng scheme). Quy trình sliding window định kỳ: `SPLIT` thêm partition cho tháng tới khi partition cuối còn rỗng, `SWITCH` hoặc `TRUNCATE` partition cũ nhất, `MERGE` ranh giới rỗng.
 
-Partition không tự làm truy vấn nhanh hơn. Truy vấn chỉ hưởng lợi khi có điều kiện trên cột partition để optimizer loại bỏ partition (partition elimination).
+> **Ghi nhớ:** Partition không tự làm truy vấn nhanh hơn. Truy vấn chỉ hưởng lợi khi lọc trên cột partition để optimizer loại bỏ partition không liên quan; truy vấn không lọc theo cột đó có thể còn chậm hơn.
 
-#### Xoá theo lô
-Khi không có partition, `DELETE` một lần hàng chục triệu dòng gây ba vấn đề: log phình vì cả thao tác là một transaction; khoá leo thang lên cả bảng (lock escalation thường xảy ra khi một câu lệnh giữ khoảng 5.000 khoá trên một đối tượng); rollback nếu bị huỷ còn lâu hơn lúc chạy. Xoá theo lô giải quyết cả ba:
+##### Xoá theo lô khi không có partition
+`DELETE` một lần hàng chục triệu dòng gây ba vấn đề: log phình vì cả thao tác là một transaction; khoá leo thang lên cả bảng (thường khi một câu lệnh giữ khoảng 5.000 khoá trên một đối tượng); huỷ giữa chừng thì rollback còn lâu hơn lúc chạy. Xoá theo lô giải quyết cả ba:
 
 ```sql
 DECLARE @batch int = 4000, @rows int = 1;
 WHILE @rows > 0
 BEGIN
     DELETE TOP (@batch) FROM dbo.ErrorLog
-    WHERE CreatedAt < '2025-01-01';      -- cần index trên CreatedAt hoặc clustered key theo thời gian
+    WHERE CreatedAt < '2025-01-01';      -- cần index trên CreatedAt
     SET @rows = @@ROWCOUNT;
     WAITFOR DELAY '00:00:00.200';        -- nhường tài nguyên, cho backup log kịp chạy
 END
 ```
 
-Kích thước lô là đánh đổi: lô nhỏ dưới ngưỡng leo thang khoá thì an toàn cho truy vấn đồng thời; lô lớn hơn (vài chục nghìn) chạy nhanh hơn nhưng có thể khoá cả bảng ngắn. Ở FULL recovery, log vẫn tích tới khi backup log, nên job backup log phải chạy trong lúc xoá.
+Lô nhỏ dưới ngưỡng leo thang khoá thì an toàn cho truy vấn đồng thời; lô lớn hơn chạy nhanh hơn nhưng có thể khoá cả bảng trong chốc lát. Ở FULL recovery, log vẫn tích tới khi backup log, nên job backup log phải chạy trong lúc xoá. Khi phần giữ lại nhỏ hơn nhiều phần xoá, cách nhanh hơn là chép phần giữ sang bảng mới, tạo index, rồi đổi tên bảng trong một khoảng dừng ngắn.
 
-Cách thứ ba khi phần giữ lại nhỏ hơn nhiều phần xoá: chép phần cần giữ sang bảng mới (`INSERT ... SELECT` với `TABLOCK` để được minimal logging ở SIMPLE/BULK_LOGGED), tạo index, rồi đổi tên bảng trong một khoảng dừng ngắn.
+##### Rác vận hành và chính sách giữ dữ liệu
+`SELECT * INTO dbo.Table_bak_20240101 FROM dbo.Table` tạo một heap không index, không ai sở hữu, nằm trong cùng DB nên làm backup to ra và tồn tại mãi. Thay bằng backup DB trước khi thay đổi, BCP ra file, hoặc nếu buộc phải tạo bảng tạm thì có quy ước tên kèm ngày hết hạn và job dọn. DB để OFFLINE vẫn chiếm đĩa vì file vẫn nằm đó.
 
-#### Bảng backup và DB OFFLINE
-`SELECT * INTO dbo.Table_bak_20240101 FROM dbo.Table` tạo một heap không index, không ai sở hữu, nằm trong cùng DB nên làm backup to ra và tồn mãi. Thay bằng: backup DB trước thay đổi, BCP/BACPAC ra file, hoặc nếu bắt buộc tạo bảng tạm thì có quy ước tên (kèm ngày hết hạn) và job dọn. DB để OFFLINE vẫn chiếm đĩa vì file vẫn nằm đó; DB không dùng nữa thì backup lần cuối, lưu file backup ở kho lạnh, rồi drop.
+Mỗi bảng lớn cần một dòng chính sách: giữ bao lâu ở bảng nóng, chuyển đi đâu, xoá hẳn khi nào, ai duyệt. Log lỗi thường giữ 30–90 ngày; dữ liệu nghiệp vụ như kết quả thi giữ theo yêu cầu pháp lý và đối soát, thường archive chứ không xoá.
 
-#### Retention theo bảng
-Mỗi bảng lớn cần một dòng chính sách: giữ bao lâu ở bảng nóng, chuyển đi đâu, xoá hẳn khi nào, ai duyệt. Bảng log lỗi, log ứng dụng thường giữ 30–90 ngày với job dọn hằng tuần. Bảng nghiệp vụ (kết quả thi) giữ theo yêu cầu pháp lý và đối soát, thường archive chứ không xoá.
+#### Cách show off
+Phát hiện thật trong đợt rà soát: bảng feed hàng trăm triệu dòng mà người dùng chỉ xem vài tháng gần nhất, hàng trăm triệu dòng nằm trong các bảng backup tạo tay và vẫn đang sinh thêm, bảng log lỗi tích từ nhiều năm trước, vài DB để OFFLINE chiếm đĩa. Phần ăn điểm là thứ tự xử lý: chặn nguồn sinh rác trước, rồi mới dọn.
 
-#### Trong báo cáo
-- Bảng feed 580 triệu dòng (54 GB), bảng cấu hình feed 1 tỷ dòng; proc tìm feed 509.798 reads/lần → đề xuất archive dữ liệu cũ hơn 1 năm (Cụm 2 – Mục 2).
-- Hơn 300 triệu dòng nằm trong các bảng backup ở cụm người dùng, và vẫn đang sinh bản mới (Cụm 5 – Mục 9).
-- Bảng log lỗi 9–19 triệu dòng tích tụ từ 2021 (Cụm 3 – Mục 3, Cụm 5 – Mục 5).
-- 10 DB OFFLINE chiếm 22,1 GB (Cụm 5 – Mục 6).
+> **Ví dụ:** "Ở cụm dữ liệu lõi, proc tìm feed quét một bảng hàng trăm triệu dòng, mỗi lần đọc hàng trăm nghìn trang, trong khi người dùng gần như chỉ xem dữ liệu năm gần nhất. Tôi đề xuất chính sách giữ dữ liệu cho từng bảng lớn: feed cũ hơn một năm chuyển sang archive, bảng log thì partition theo thời gian để dọn bằng truncate từng partition. Ở cụm khác có rất nhiều bảng backup tạo bằng `SELECT INTO`, và vẫn đang được sinh thêm, nên bước đầu là tắt tiến trình tạo bảng đó, nếu không dọn xong lại có bảng mới. Với bảng chưa partition, tôi viết cách xoá theo lô vài nghìn dòng có index trên cột thời gian, chạy ngoài giờ thi, theo dõi log và blocking trong lúc chạy. Trước khi xoá khỏi bảng nóng, phải có đường đọc dữ liệu archive cho tra cứu khiếu nại."
 
-#### Cách sửa
-- Lập chính sách giữ dữ liệu cho từng bảng lớn; partition theo ca thi hoặc theo ngày cho bảng log.
-- Tắt tiến trình tự tạo bảng backup trước, rồi mới dọn các bảng đã có (nếu không, dọn xong lại sinh mới).
-- Archive feed cũ hơn 1 năm bằng xoá theo lô hoặc chép-giữ-lại, kèm index phục vụ truy vấn trên dữ liệu gần.
+Điểm ăn điểm:
+- Ba rủi ro của `DELETE` lớn: log, lock escalation, rollback.
+- Partition giúp quản lý vòng đời chắc chắn, còn hiệu năng truy vấn thì có điều kiện.
+- Tắt nguồn sinh rác trước khi dọn.
+- Luôn hỏi "ai còn cần đọc dữ liệu cũ" trước khi archive.
 
-#### Kiểm chứng
-- Kích thước bảng (`sp_spaceused`) và số trang đọc mỗi lần của proc tìm feed giảm.
-- Log không vượt ngưỡng cảnh báo trong lúc dọn; không có blocking kéo dài (`sp_WhoIsActive` trong lúc chạy).
+#### Câu hỏi vặn
+- **"Xoá 100 triệu dòng log cũ trên production thế nào?"** Không `DELETE` một lần. Có partition thì `TRUNCATE ... WITH (PARTITIONS ...)` hoặc `SWITCH` ra bảng rỗng. Không có thì `DELETE TOP (N)` theo index trên cột thời gian, trong vòng lặp có nghỉ, ngoài giờ cao điểm, job backup log chạy song song. Nếu phần giữ lại nhỏ, chép phần giữ sang bảng mới rồi đổi tên.
+- **"Partition có làm truy vấn nhanh hơn không?"** Chỉ khi truy vấn lọc trên cột partition để có partition elimination. Lợi ích chắc chắn là quản lý vòng đời: switch, truncate, rebuild từng partition.
+- **"Anh chọn kích thước lô thế nào?"** Bắt đầu dưới ngưỡng leo thang khoá, vài nghìn dòng, đo thời gian mỗi lô và blocking, rồi tăng dần nếu hệ thống chịu được. Theo dõi log và độ trễ replica trong lúc chạy.
+- **"Vì sao không nên sao lưu bảng bằng SELECT INTO?"** Nó tạo heap không index trong cùng DB, làm backup to ra, không có chủ, không có hạn xoá. Dùng backup DB hoặc BCP; nếu buộc tạo bảng tạm thì có quy ước tên kèm ngày hết hạn và job dọn.
+- **"Xoá theo lô mà càng về sau càng chậm, vì sao?"** Thường do điều kiện `WHERE` không có index: mỗi lô phải quét lại bảng, đi qua cả các trang đã xoá. Cần index trên cột lọc, hoặc xoá theo khoảng khoá clustered.
+- **"Archive xong khách hàng khiếu nại bài thi năm ngoái thì sao?"** Đó là lý do phải thiết kế đường đọc dữ liệu archive trước khi xoá khỏi bảng nóng: bảng archive hoặc kho dữ liệu có index cho tra cứu, chậm hơn cũng được nhưng phải đọc được.
 
-#### Bẫy
-- Xoá theo lô mà điều kiện `WHERE` không có index: mỗi lô quét lại cả bảng, càng về sau càng chậm.
-- Partition bảng mà index không aligned thì không `SWITCH` được.
-- Archive mà quên các truy vấn tra cứu cũ (khiếu nại, đối soát): cần có đường đọc dữ liệu archive trước khi xoá khỏi bảng nóng.
+#### Bẫy cần tránh
+- Nói "partition để query nhanh hơn" mà không nhắc điều kiện lọc theo cột partition.
+- Xoá theo lô mà cột lọc không có index.
+- Dọn bảng backup trong khi tiến trình tạo chúng vẫn chạy.
+- Đưa dữ liệu còn cần tra cứu vào chỗ không đọc lại được.
 
-#### Câu hỏi phỏng vấn
-- **"Xoá 100 triệu dòng log cũ trên production thế nào?"** Không `DELETE` một lần (log phình, khoá leo thang, rollback lâu). Có partition thì `SWITCH` ra bảng rỗng hoặc `TRUNCATE ... WITH (PARTITIONS ...)`. Không có thì `DELETE TOP (N)` theo index trên cột thời gian, trong vòng lặp, có nghỉ, ngoài giờ cao điểm, job backup log chạy song song. Nếu phần giữ lại nhỏ, chép phần giữ sang bảng mới rồi đổi tên.
-- **"Partition có làm truy vấn nhanh hơn không?"** Chỉ khi truy vấn lọc trên cột partition để có partition elimination. Lợi ích chắc chắn là quản lý vòng đời: switch, truncate từng partition, rebuild từng partition. Truy vấn không lọc theo cột partition có thể còn chậm hơn.
-- **"Vì sao không nên sao lưu bảng bằng SELECT INTO?"** Nó tạo heap không index trong cùng DB, làm backup và restore to ra, không có chủ, không có hạn xoá. Dùng backup DB, BCP hoặc BACPAC; nếu buộc phải tạo bảng tạm thì có quy ước tên kèm ngày hết hạn và job dọn.
-- **"Bạn chọn kích thước lô khi xoá dữ liệu thế nào?"** Bắt đầu dưới ngưỡng leo thang khoá (vài nghìn dòng) để không khoá bảng, đo thời gian mỗi lô và blocking, rồi tăng dần nếu hệ thống chịu được. Theo dõi log và độ trễ replica trong lúc chạy.
-
-#### Tóm tắt
+#### Nhớ nhanh
 - Bảng nóng nhỏ thì index nhỏ, bảo trì nhanh, buffer pool chứa đúng dữ liệu cần.
-- Partition theo thời gian cho phép `SWITCH`/`TRUNCATE` partition thay cho xoá từng dòng.
+- Partition theo thời gian cho phép `SWITCH`/`TRUNCATE` thay cho xoá từng dòng.
 - Không có partition thì xoá theo lô có index, có nghỉ, backup log chạy song song.
-- Bảng backup tạo bằng `SELECT INTO` và DB OFFLINE là rác chiếm đĩa; cần quy ước và job dọn.
-- Mỗi bảng lớn có chính sách giữ dữ liệu rõ ràng.
+- Mỗi bảng lớn có chính sách giữ dữ liệu; bảng backup và DB OFFLINE cần quy ước và job dọn.
 
 #### Bài tập
-1. Bảng log 200 triệu dòng, clustered index trên `Id` identity, có index trên `CreatedAt`. Viết vòng lặp xoá dữ liệu trước 2025-01-01 theo lô 4.000 dòng.
+1. Bảng log 200 triệu dòng, clustered trên `Id` identity, có index trên `CreatedAt`. Viết vòng lặp xoá dữ liệu trước 2025-01-01 theo lô 4.000 dòng.
    **Đáp án:** Vòng `WHILE` với `DELETE TOP (4000) FROM ... WHERE CreatedAt < '2025-01-01'`, gán `@@ROWCOUNT`, `WAITFOR DELAY` ngắn giữa các lô; chạy ngoài giờ cao điểm, backup log song song.
 2. Bảng log đã partition theo tháng (RANGE RIGHT). Viết lệnh dọn tháng cũ nhất và thêm ranh giới cho tháng tới.
-   **Đáp án:** `TRUNCATE TABLE dbo.ExamLog WITH (PARTITIONS (1));` rồi `ALTER PARTITION FUNCTION pf_month() MERGE RANGE ('2026-01-01');`; trước đó `ALTER PARTITION SCHEME ps_month NEXT USED [PRIMARY];` và `ALTER PARTITION FUNCTION pf_month() SPLIT RANGE ('2026-04-01');`. Split nên làm khi partition cuối còn rỗng để tránh di chuyển dữ liệu.
-3. Viết một dòng chính sách giữ dữ liệu cho bảng log lỗi ứng dụng.
-   **Đáp án:** Ví dụ: giữ 90 ngày ở bảng nóng; job xoá theo lô chạy 2:00 sáng Chủ nhật; dữ liệu lỗi nghiêm trọng xuất ra file trước khi xoá; chủ sở hữu là nhóm backend; cảnh báo nếu bảng vượt 5 triệu dòng.
+   **Đáp án:** `ALTER PARTITION SCHEME ps_month NEXT USED [PRIMARY];` rồi `ALTER PARTITION FUNCTION pf_month() SPLIT RANGE ('2026-04-01');` khi partition cuối còn rỗng; `TRUNCATE TABLE dbo.ExamLog WITH (PARTITIONS (1));` rồi `ALTER PARTITION FUNCTION pf_month() MERGE RANGE ('2026-01-01');`.
 
 ## Chương 21. Tầng ứng dụng và kiến trúc
-Nhiều vấn đề trông như "DB chậm" thực ra nằm ở cách ứng dụng gọi DB: gọi lặp lại cùng một dữ liệu hàng triệu lần, giữ kết nối quá lâu, gọi server khác trong lúc đang giữ khoá, chạy truy vấn báo cáo trên cùng server với luồng ghi nóng, nuốt lỗi khiến không ai biết DB đang hỏng. Sửa ở tầng ứng dụng thường rẻ hơn và tác động lớn hơn thêm index.
+Nhiều vấn đề trông như "database chậm" thực ra nằm ở cách ứng dụng gọi database: đọc lại cùng một dữ liệu hàng triệu lần, giữ kết nối quá lâu, gọi sang server khác trong lúc đang giữ khoá, chạy báo cáo trên cùng server với luồng ghi nóng, nuốt lỗi khiến không ai biết DB đang hỏng. Sửa ở tầng ứng dụng thường rẻ hơn và tác động lớn hơn thêm một index.
 
-Interviewer senior thường hỏi theo hướng thiết kế: "bạn cache cái gì, invalidate thế nào", "pool bao nhiêu là đủ", "làm sao giữ nhất quán khi tách transaction". Câu trả lời tốt luôn có số (tần suất gọi, thời gian giữ kết nối) và có đánh đổi (độ cũ dữ liệu, độ trễ đồng bộ).
-
-Học xong chương này, bạn thiết kế được lớp cache có chống stampede, tính được kích thước pool bằng Little's law, thay distributed transaction bằng outbox, chọn được cách tách đọc/ghi, và xử lý lỗi sao cho lỗi lộ ra mà không làm hại DB.
+Người phỏng vấn senior hỏi mảng này theo hướng thiết kế: cache cái gì và xoá cache thế nào, pool bao nhiêu là đủ, tách transaction rồi giữ nhất quán ra sao. Câu trả lời tốt có lập luận định lượng (tần suất gọi, thời gian giữ kết nối) và nói rõ cái giá phải trả (dữ liệu cũ, độ trễ đồng bộ).
 
 ### Bài 21.1. Cache ở tầng ứng dụng
 
-#### Mục tiêu
-- Sau bài này, bạn phân biệt được ba lớp cache và chọn lớp phù hợp cho từng loại dữ liệu.
-- Bạn cài được cache-aside có TTL, invalidation theo sự kiện và chống cache stampede.
-- Bạn chọn được TTL dựa trên tần suất dữ liệu đổi và yêu cầu nghiệp vụ.
+#### Kiến thức
+Cache đáng làm khi cùng một dữ liệu được đọc nhiều lần hơn hẳn số lần nó thay đổi. Câu hỏi khó không phải "dùng Redis hay không", mà là cache ở lớp nào, giữ bao lâu, xoá khi nào.
 
-#### Ba lớp cache
-1. **Trong một request**: nhớ kết quả trong biến hoặc dictionary của request. Ví dụ một request cần cấu hình sự kiện ở 5 chỗ thì chỉ gọi DB một lần. Không có vấn đề nhất quán vì sống đúng một request.
-2. **Trong bộ nhớ một instance** (`IMemoryCache`): nhanh nhất (nanosecond tới microsecond), không qua mạng. Nhược điểm: mỗi instance có bản riêng, xoá cache phải báo tới từng instance; tốn RAM của process, tăng áp lực GC nếu giữ object lớn.
-3. **Cache phân tán** (Redis): dùng chung cho mọi instance, sống qua lần deploy. Mỗi lần đọc là một round-trip mạng (thường dưới 1 ms trong cùng data center) cộng chi phí deserialize.
+##### Ba lớp cache
+1. **Trong một request**: nhớ kết quả trong biến của request. Một request cần cấu hình sự kiện ở năm chỗ thì chỉ gọi DB một lần. Không có vấn đề nhất quán vì sống đúng một request.
+2. **Trong bộ nhớ một instance** (`IMemoryCache`): nhanh nhất, không qua mạng. Nhược điểm: mỗi instance có bản riêng, xoá phải báo tới từng instance; giữ object lớn làm tăng áp lực GC.
+3. **Cache phân tán** (Redis): dùng chung cho mọi instance, sống qua lần deploy. Mỗi lần đọc là một round-trip mạng cộng chi phí deserialize.
 
-Hai lớp sau thường kết hợp: L1 trong process TTL ngắn (vài giây tới vài chục giây) trước L2 Redis TTL dài hơn. Bài 23.2 đi sâu phần này.
+Hai lớp sau thường đi cùng nhau: L1 trong process TTL ngắn đứng trước L2 Redis TTL dài hơn (chi tiết ở bài cache nâng cao, chương 23).
 
-#### Cache-aside
-Cache-aside (lazy loading): đọc cache → trượt thì đọc DB → ghi vào cache có TTL → trả kết quả. Khi dữ liệu đổi, xoá key (hoặc ghi đè) theo sự kiện.
+##### Cache-aside
+Đọc cache, trượt thì đọc DB, ghi vào cache kèm TTL, trả kết quả. Khi dữ liệu đổi, xoá key theo sự kiện.
 
 ```csharp
 public async Task<ExamPaper?> GetPaperAsync(int paperId, CancellationToken ct)
 {
     var key = $"exam:paper:v1:{paperId}";
-    if (_memory.TryGetValue(key, out ExamPaper? cached))
-        return cached;
+    if (_memory.TryGetValue(key, out ExamPaper? cached)) return cached;
 
-    // Single-flight trong instance: chỉ một request nạp key này từ DB
-    var gate = _locks.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
+    var gate = _locks.GetOrAdd(key, _ => new SemaphoreSlim(1, 1)); // single-flight trong instance
     await gate.WaitAsync(ct);
     try
     {
-        if (_memory.TryGetValue(key, out cached)) return cached;
-        var paper = await _repo.GetPaperAsync(paperId, ct);       // gọi proc
+        if (_memory.TryGetValue(key, out cached)) return cached;  // double-check
+        var paper = await _repo.GetPaperAsync(paperId, ct);        // gọi proc
         if (paper is not null)
-        {
-            var ttl = TimeSpan.FromMinutes(30) + TimeSpan.FromSeconds(Random.Shared.Next(0, 120));
-            _memory.Set(key, paper, ttl);                          // TTL lệch ngẫu nhiên
-        }
+            _memory.Set(key, paper, TimeSpan.FromMinutes(30) + TimeSpan.FromSeconds(Random.Shared.Next(0, 120)));
         return paper;
     }
     finally { gate.Release(); }
 }
 ```
 
-Các điểm trong đoạn trên:
-- Key có tiền tố theo miền và số version (`v1`). Đổi cấu trúc object thì tăng version, không cần xoá cache cũ.
-- Kiểm tra lại cache sau khi lấy được khoá (double-check), tránh nạp lại khi request trước vừa nạp xong.
-- TTL cộng thêm phần ngẫu nhiên để các key không hết hạn cùng lúc.
-- Chỉ cache khi có dữ liệu thật. Nếu muốn cache "không tồn tại" (chống truy vấn lặp vào ID không có), cache một giá trị đánh dấu với TTL ngắn, và chỉ khi DB trả rỗng thật, không phải khi DB lỗi.
+Các điểm đáng nói: key có tiền tố miền và version (`v1`) để đổi cấu trúc object thì tăng version thay vì xoá cache; kiểm tra lại sau khi lấy khoá để không nạp hai lần; TTL cộng phần ngẫu nhiên để các key không hết hạn cùng lúc. Ghi vào Redis nên chạy nền và tự bắt lỗi: cache hỏng không được làm request thất bại, request cũng không phải chờ ghi cache xong.
 
-Ghi vào Redis nên chạy nền và tự bắt lỗi: cache hỏng không được làm request thất bại, request cũng không phải chờ ghi cache xong.
+##### Cache kết quả rỗng
+Nếu chỉ cache khi có dữ liệu, mọi lần hỏi một thứ không tồn tại (một tổ hợp chưa có cấu hình, một ID sai) đều trượt và gọi DB. Cache một giá trị đánh dấu "không có" với TTL ngắn sẽ chặn được việc này, với hai điều kiện: chỉ khi DB trả rỗng thật, không phải khi DB lỗi; và khi tạo mới dữ liệu đó thì xoá key.
 
-#### Cache stampede
-Cache stampede (thundering herd trên cache): một key nóng hết hạn, hàng nghìn request cùng trượt và cùng gọi DB, DB quá tải đúng lúc tải cao nhất. Cách chống:
-- **Single-flight / request coalescing**: chỉ một request nạp, các request khác chờ kết quả (như đoạn code trên, hoặc `HybridCache` đã làm sẵn trong một instance). Giữa nhiều instance, dùng khoá phân tán ngắn trên Redis (`SET key value NX PX 5000`).
-- **TTL lệch ngẫu nhiên** (jitter) để không nhiều key hết hạn cùng lúc.
-- **Làm mới nền**: job nạp lại key trước khi hết hạn; hoặc stale-while-revalidate: trả giá trị cũ, đồng thời một luồng nạp giá trị mới.
-- **Warmup**: nạp sẵn cache đề thi, cấu hình ca thi trước giờ mở ca.
+##### Cache stampede
+Một key nóng hết hạn, hàng nghìn request cùng trượt và cùng gọi DB đúng lúc tải cao nhất. Cách chống:
+- **Single-flight**: chỉ một request nạp, request khác chờ kết quả (như đoạn code trên). Giữa nhiều instance, dùng khoá ngắn trên Redis (`SET key value NX PX 5000`).
+- **TTL lệch ngẫu nhiên** (jitter).
+- **Làm mới nền** hoặc stale-while-revalidate: trả bản cũ, đồng thời một luồng nạp bản mới.
+- **Warmup**: nạp sẵn đề thi, cấu hình ca thi trước giờ mở ca.
 
-#### Chọn TTL
-TTL là độ cũ tối đa chấp nhận được, không phải con số tuỳ ý. Câu hỏi đặt cho nghiệp vụ: dữ liệu này đổi bao lâu một lần, người dùng thấy dữ liệu cũ bao lâu thì chấp nhận được. Dữ liệu đổi theo sự kiện biết trước (job xếp hạng, admin sửa cấu hình) thì xoá hoặc ghi đè cache ngay khi sự kiện xảy ra; TTL chỉ là lưới an toàn khi bước xoá cache thất bại.
+##### Chọn TTL
+TTL là độ cũ tối đa nghiệp vụ chấp nhận, không phải con số tuỳ ý. Dữ liệu đổi theo sự kiện biết trước (job xếp hạng chạy xong, admin sửa cấu hình) thì ghi đè hoặc xoá cache ngay khi sự kiện xảy ra; TTL chỉ là lưới an toàn khi bước xoá thất bại. Xoá cache sau khi commit DB, không phải trước, vì xoá trước thì một request khác có thể nạp lại giá trị cũ vào cache.
 
-#### Trong báo cáo
-- Proc thống kê hạng gọi 9,1 triệu lần, proc hạng theo user 15,4 triệu lần, trong khi bảng hạng chỉ đổi khi job xếp hạng chạy → đề xuất TTL 60–300 giây và ghi lại cache sau khi job chạy xong (Cụm 4 – Mục 11).
-- Danh mục trường gọi 7.623 lần/ngày, gần như không đổi → Redis TTL 24 giờ (Cụm 2 – Mục 13).
-- Proc lấy đề theo mã đề gọi 640.430 lần/ngày, đề không đổi trong ca thi → cache theo mã đề (Cụm 6 – Mục 5).
-- API tự luyện khi trượt cache phải gọi DB 3 lần (Vấn đề 2).
+#### Cách show off
+Bạn có một câu chuyện cache thật và là của bạn: trong đợt rà soát, một proc lấy cấu hình xuất hiện với số lần chạy cực lớn. Bạn tìm ra nguyên nhân là lớp cache phía trên không lưu kết quả rỗng, nên các tổ hợp chưa có cấu hình luôn trượt và luôn gọi DB, rồi tự sửa. Ngoài ra là các đề xuất: cache bảng xếp hạng (chỉ đổi khi job xếp hạng chạy), cache đề theo mã đề (không đổi trong ca thi).
 
-#### Cách sửa
-- Cache theo mã đề cho dữ liệu đề thi, warmup trước ca.
-- Bảng hạng: job xếp hạng xong thì ghi đè cache; TTL 60–300 giây làm lưới an toàn.
-- Gộp 3 lần gọi DB của API tự luyện thành một proc trả nhiều result set, hoặc cache từng phần riêng.
+> **Ví dụ:** "Khi xếp hạng các proc theo tổng số lần chạy, tôi thấy một proc lấy cấu hình nằm gần đầu danh sách, dù đã có cache Redis phía trên. Đọc code thì thấy cache chỉ lưu khi có dữ liệu; với những tổ hợp chưa được cấu hình, kết quả rỗng không được lưu nên request nào cũng trượt và đi thẳng xuống DB. Tăng TTL không giải quyết được vì cái bị thiếu là cache cho trường hợp rỗng. Tôi thêm negative caching với TTL ngắn hơn và cho CMS xoá key khi tạo hoặc sửa cấu hình, để cấu hình mới không bị coi là rỗng tới hết TTL. Để đo, tôi chụp số lần chạy của proc hai lần cách nhau một giờ, cùng khung giờ, trước và sau khi deploy, thay vì nhìn con số cộng dồn trong DMV."
 
-#### Kiểm chứng
-- Tỉ lệ cache hit theo từng nhóm key (đếm hit/miss bằng metric).
-- Số lần gọi proc mỗi ngày giảm tương ứng (Query Store, `execution_count`).
-- p95/p99 của API không tăng vọt ở thời điểm key hết hạn.
+Điểm ăn điểm:
+- Con số trong `sys.dm_exec_query_stats` là cộng dồn từ lúc plan vào cache; muốn nói "giảm bao nhiêu" phải đo theo khoảng thời gian.
+- Phân biệt "rỗng thật" với "lỗi" trước khi cache.
+- TTL là quyết định nghiệp vụ; sự kiện đổi dữ liệu thì xoá cache sau commit.
+- Nghĩ tới stampede và warmup trước giờ thi, không chỉ hit rate.
 
-#### Bẫy
-- Cache kết quả rỗng do DB lỗi: lỗi biến thành "không có dữ liệu" và tồn tại tới hết TTL.
-- Cache object có thể sửa (mutable) trong `IMemoryCache` rồi sửa object đó trong request: mọi request khác thấy bản đã sửa.
-- Xoá cache trước khi commit DB: request khác nạp lại dữ liệu cũ vào cache. Xoá sau commit.
+#### Câu hỏi vặn
+- **"Sao không tăng TTL cho xong?"** TTL dài không giúp gì cho trường hợp rỗng vì kết quả rỗng không được lưu, nên tổ hợp chưa có cấu hình vẫn trượt mãi. Cái thiếu là negative caching, cộng với xoá key khi CMS tạo cấu hình.
+- **"Negative cache có rủi ro gì?"** Cấu hình vừa tạo có thể vẫn bị coi là rỗng tới khi hết TTL. Tôi đặt TTL ngắn hơn cho kết quả rỗng và cho CMS xoá key khi tạo hoặc sửa. Ngoài ra không bao giờ cache rỗng khi DB lỗi.
+- **"Cache bảng xếp hạng TTL 5 phút, job chạy xong lúc 10:00, người dùng thấy hạng cũ tới 10:05 có được không?"** Hỏi nghiệp vụ trước. Nếu không chấp nhận, job xong thì ghi đè cache hoặc xoá key; TTL chỉ còn là lưới an toàn khi bước cập nhật cache thất bại.
+- **"Cache stampede là gì và anh chống thế nào?"** Key nóng hết hạn, nhiều request cùng trượt và cùng gọi DB. Chống bằng single-flight, TTL lệch ngẫu nhiên, làm mới nền hoặc stale-while-revalidate, và warmup trước sự kiện lớn.
+- **"Khi nào IMemoryCache, khi nào Redis?"** Dữ liệu nhỏ, đọc rất nhiều, chấp nhận các instance lệch nhau vài giây thì `IMemoryCache`. Cần dùng chung, cần xoá đồng loạt, dữ liệu lớn thì Redis. Thường kết hợp: L1 TTL ngắn trước L2 Redis.
+- **"Xoá cache trước hay sau khi ghi DB?"** Sau commit. Xoá trước thì giữa lúc xoá và lúc commit, request khác có thể nạp giá trị cũ vào cache và giữ tới hết TTL. Vẫn còn cửa sổ race nhỏ, nên giữ TTL làm lưới an toàn.
+- **"Con số số lần chạy anh nói lấy ở đâu?"** Từ `execution_count` trong DMV, nhưng đó là số cộng dồn từ lúc plan vào cache. Số để so sánh là chênh lệch giữa hai lần chụp cách nhau một khoảng cố định, cùng khung giờ, trước và sau khi sửa.
 
-#### Câu hỏi phỏng vấn
-- **"Cache bảng xếp hạng TTL 5 phút, job xếp hạng xong lúc 10:00, người dùng thấy hạng cũ tới 10:05 có chấp nhận được không?"** Hỏi nghiệp vụ trước. Nếu không chấp nhận: job xong thì ghi đè cache hoặc xoá key theo sự kiện; TTL chỉ là lưới an toàn khi bước cập nhật cache thất bại.
-- **"Cache stampede là gì và bạn chống thế nào?"** Key nóng hết hạn, nhiều request cùng trượt và cùng gọi DB. Chống bằng single-flight (một request nạp, request khác chờ), TTL lệch ngẫu nhiên, làm mới nền hoặc stale-while-revalidate, và warmup trước sự kiện lớn.
-- **"Khi nào dùng IMemoryCache, khi nào dùng Redis?"** Dữ liệu nhỏ, đọc rất nhiều, chấp nhận mỗi instance lệch nhau vài giây thì `IMemoryCache`. Cần dùng chung giữa instance, cần xoá đồng loạt, dữ liệu lớn hơn RAM một process thì Redis. Thường kết hợp L1 TTL ngắn trước L2 Redis.
-- **"Có nên cache kết quả rỗng không?"** Có, để chặn truy vấn lặp vào ID không tồn tại, nhưng TTL ngắn và chỉ khi DB trả rỗng thật. Nếu code nuốt exception rồi trả rỗng, cache sẽ giữ lỗi đó như dữ liệu.
-- **"Xoá cache trước hay sau khi ghi DB, vì sao?"** Sau khi commit. Xoá trước thì giữa lúc xoá và lúc commit, một request khác có thể nạp lại giá trị cũ vào cache và giữ tới hết TTL. Dù vậy vẫn còn cửa sổ race nhỏ, nên giữ TTL làm lưới an toàn.
+#### Bẫy cần tránh
+- Nói "tôi giảm được X triệu lần gọi" bằng con số cộng dồn của DMV.
+- Cache kết quả rỗng trong `catch`: lỗi DB biến thành "không có dữ liệu" tới hết TTL.
+- Cache object mutable trong `IMemoryCache` rồi sửa nó trong request: mọi request khác thấy bản đã sửa.
+- Await ghi Redis trên đường xử lý request: Redis chậm kéo API chậm theo.
 
-#### Tóm tắt
+#### Nhớ nhanh
 - Ba lớp: trong request, trong process, Redis dùng chung.
 - Cache-aside: đọc cache, trượt thì đọc DB, ghi cache có TTL; xoá theo sự kiện sau commit.
-- Chống stampede bằng single-flight, TTL jitter, làm mới nền, warmup.
-- TTL là độ cũ tối đa nghiệp vụ chấp nhận.
-- Phân biệt "rỗng" với "lỗi" trước khi cache.
+- Negative caching chặn truy vấn lặp vào thứ không tồn tại; TTL ngắn, không cache khi lỗi.
+- Chống stampede: single-flight, jitter, làm mới nền, warmup.
 
 #### Bài tập
-1. Proc lấy đề gọi 640.430 lần/ngày, mỗi ngày có 40 mã đề được dùng. Ước lượng số lần gọi proc sau khi cache theo mã đề với TTL 30 phút, ca thi kéo dài 12 giờ.
-   **Đáp án:** Mỗi mã đề nạp lại khoảng 12 × 2 = 24 lần; 40 mã đề → khoảng 960 lần/ngày mỗi instance có L1 riêng (nhân số instance nếu chỉ dùng L1), giảm hơn 99%.
-2. Chỉ ra lỗi trong đoạn: `try { var r = await db.GetRank(id); cache.Set(key, r ?? new List<Rank>()); } catch { cache.Set(key, new List<Rank>()); }`.
-   **Đáp án:** Khi DB lỗi, danh sách rỗng được cache và trả cho người dùng tới hết TTL; lỗi không được ghi log. Không cache trong `catch`, ghi log và ném lại hoặc trả lỗi rõ ràng.
-3. Thiết kế key và TTL cho cấu hình ca thi mà admin có thể sửa trong CMS.
-   **Đáp án:** Key `exam:shift-config:v1:{shiftId}`; TTL vài phút làm lưới an toàn; CMS sửa xong (sau commit) thì xoá key ở Redis và phát thông báo (Pub/Sub) để các instance xoá L1; warmup trước giờ mở ca.
+1. Proc lấy đề gọi khoảng 640.000 lần/ngày, mỗi ngày dùng 40 mã đề. Ước lượng số lần gọi proc sau khi cache theo mã đề với TTL 30 phút, ca thi kéo dài 12 giờ, một instance.
+   **Đáp án:** Mỗi mã đề nạp lại khoảng 12 × 2 = 24 lần; 40 mã đề → khoảng 960 lần/ngày mỗi instance (nhân số instance nếu chỉ dùng L1), giảm hơn 99%.
+2. Chỉ ra lỗi: `try { var r = await db.GetRank(id); cache.Set(key, r ?? new List<Rank>()); } catch { cache.Set(key, new List<Rank>()); }`.
+   **Đáp án:** Khi DB lỗi, danh sách rỗng được cache và trả cho người dùng tới hết TTL; lỗi không được ghi log. Không cache trong `catch`; ghi log và ném lại.
 
 ### Bài 21.2. Connection pool và Little's law
 **Viz:** pool
 
-#### Mục tiêu
-- Sau bài này, bạn áp dụng được Little's law để tính số kết nối đồng thời cần cho một tải cho trước.
-- Bạn giải thích được cơ chế ADO.NET connection pool và hiện tượng hết pool.
-- Bạn biết vì sao tăng pool khi query còn chậm làm tình hình tệ hơn, và quản lý đúng kết nối ra ngoài (`HttpClient`, `GrpcChannel`).
+#### Kiến thức
+Khi API báo lỗi hết connection pool, phản xạ tự nhiên là tăng `Max Pool Size`. Bài này giải thích vì sao phản xạ đó thường làm tình hình tệ hơn.
 
-#### Little's law
-Với một hệ ổn định: L = λ × W. L là số phần tử đang nằm trong hệ, λ là tốc độ đến, W là thời gian mỗi phần tử ở trong hệ. Áp vào connection pool: số kết nối đang dùng = số request mỗi giây × thời gian mỗi request giữ kết nối.
+##### Little's law
+Với một hệ ổn định: L = λ × W. L là số phần tử đang nằm trong hệ, λ là tốc độ đến, W là thời gian mỗi phần tử ở lại. Áp vào pool: số kết nối đang dùng = số request mỗi giây × thời gian mỗi request giữ kết nối.
 
-- 2.000 request/giây, giữ kết nối 30 ms → 2.000 × 0,03 = 60 kết nối đồng thời trung bình.
-- Query 2 ms → một kết nối phục vụ được 1 / 0,002 = 500 request/giây; pool 50 đủ cho 25.000 request/giây.
-- Query 2 giây, 100 request/giây → cần 200 kết nối, và 200 truy vấn chạy đồng thời trên SQL Server.
+- 2.000 request/giây, giữ kết nối 30 ms → 60 kết nối đồng thời trung bình.
+- Query 2 ms → một kết nối phục vụ được 500 request/giây; pool 50 đủ cho 25.000 request/giây.
+- Query 2 giây, 100 request/giây → cần 200 kết nối, tức 200 truy vấn chạy đồng thời trên SQL Server.
 
 Hệ quả: thời gian giữ kết nối quan trọng ngang tốc độ đến. Giảm W là cách rẻ nhất để giảm số kết nối.
 
-#### ADO.NET connection pool
-Mở một kết nối vật lý tới SQL Server tốn kém: TCP handshake, TLS handshake, xác thực, khởi tạo session. Pool giữ các kết nối đã mở để dùng lại. `SqlConnection.Open()` lấy một kết nối rảnh từ pool; `Dispose()`/`Close()` trả về pool (kết nối vật lý vẫn mở, session được reset ở lần dùng sau).
-
-- Pool tách theo connection string chính xác từng ký tự (và theo identity khi dùng Integrated Security). Hai chuỗi khác nhau một khoảng trắng là hai pool.
-- `Max Pool Size` mặc định 100, `Min Pool Size` mặc định 0.
-- Hết pool: request mới chờ tới `Connect Timeout` (mặc định 15 giây) rồi nhận `InvalidOperationException` với thông báo hết thời gian chờ lấy kết nối từ pool. Triệu chứng: API chậm đúng khoảng 15 giây rồi lỗi, trong khi CPU SQL Server có thể không cao.
+##### ADO.NET connection pool
+Mở một kết nối vật lý tốn kém: TCP, TLS, xác thực, khởi tạo session. Pool giữ các kết nối đã mở để dùng lại: `Open()` lấy một kết nối rảnh, `Dispose()` trả về pool.
+- Pool tách theo connection string chính xác từng ký tự. Hai chuỗi khác nhau một khoảng trắng là hai pool.
+- `Max Pool Size` mặc định 100.
+- Hết pool: request mới chờ tới `Connect Timeout` (mặc định 15 giây) rồi nhận `InvalidOperationException`. Triệu chứng điển hình: API chậm đúng khoảng 15 giây rồi lỗi, trong khi CPU SQL Server có thể không cao.
 
 ```csharp
 // Mở muộn, đóng sớm: kết nối chỉ được giữ trong lúc chạy proc
@@ -442,89 +378,79 @@ await using (var cmd = new SqlCommand("dbo.usp_GetExamResult", conn) { CommandTy
     await conn.OpenAsync(ct);
     result = await ReadResultAsync(cmd, ct);
 }
-// Gọi dịch vụ khác SAU khi đã trả kết nối
-await _notifyClient.SendAsync(result, ct);
+await _notifyClient.SendAsync(result, ct);   // gọi dịch vụ khác SAU khi đã trả kết nối
 ```
 
-Rò rỉ kết nối (quên `Dispose`, giữ `SqlDataReader` mở) làm pool cạn dần dù tải không đổi. Kiểm tra bằng số session theo `program_name`/`host_name` trong `sys.dm_exec_sessions`, hoặc event counter của Microsoft.Data.SqlClient (số kết nối active, số kết nối trong pool).
+Rò rỉ kết nối (quên `Dispose`, giữ `SqlDataReader` mở) làm pool cạn dần dù tải không đổi. Kiểm tra bằng số session theo `program_name` trong `sys.dm_exec_sessions`, hoặc event counter của Microsoft.Data.SqlClient.
 
-#### Vì sao tăng pool không cứu được query chậm
-Mỗi truy vấn đang chạy chiếm ít nhất một worker thread của SQL Server; truy vấn song song chiếm nhiều hơn. Số worker có giới hạn (`max worker threads` tự tính theo số CPU, ví dụ máy 16 logical CPU khoảng 704 worker trên x64). Khi query chậm, tăng pool từ 100 lên 500 chỉ đẩy thêm truy vấn đồng thời vào SQL Server: tranh chấp CPU, khoá, memory grant tăng, mỗi truy vấn lại chậm hơn, W tăng nên cần L lớn hơn nữa. Vòng xoáy kết thúc bằng wait `THREADPOOL`: SQL Server hết worker, kết nối mới không được phục vụ, kể cả đăng nhập của DBA (lúc đó chỉ còn Dedicated Admin Connection).
+##### Vì sao tăng pool không cứu được query chậm
+Mỗi truy vấn đang chạy chiếm ít nhất một worker thread của SQL Server, và số worker có giới hạn (máy 16 logical CPU khoảng 700 worker). Khi query chậm, tăng pool từ 100 lên 500 chỉ đẩy thêm truy vấn đồng thời vào SQL Server: tranh chấp CPU, khoá, memory grant tăng, mỗi truy vấn chậm hơn, W tăng nên lại cần L lớn hơn. Vòng xoáy kết thúc bằng wait `THREADPOOL`: SQL Server hết worker, kết nối mới không được phục vụ, kể cả DBA muốn vào xem (chỉ còn Dedicated Admin Connection).
 
-Thứ tự đúng: giảm W (sửa query, bỏ gọi ngoài trong lúc giữ kết nối) trước, chỉ tăng pool khi phép tính Little's law với W đã tối ưu cho thấy cần.
+Pool còn là giới hạn trên mỗi process: N instance app thì tổng kết nối tới DB có thể lên N × Max Pool Size.
 
-Pool là giới hạn trên mỗi process. Với N instance app, tổng kết nối tới DB có thể lên N × Max Pool Size. Tính pool theo tải mỗi instance, cộng dư cho lúc đỉnh.
+##### Kết nối ra ngoài cũng phải dùng lại
+- `new HttpClient()` mỗi request: socket TIME_WAIT tích tụ, có thể cạn cổng. Dùng `IHttpClientFactory`, hoặc một `HttpClient` singleton với `SocketsHttpHandler.PooledConnectionLifetime` để vẫn cập nhật DNS.
+- `GrpcChannel` tạo một lần và dùng lại (`AddGrpcClient`); tạo mới mỗi request là mỗi lần một kết nối HTTP/2 và TLS mới.
 
-#### Kết nối ra ngoài cũng phải dùng lại
-- `new HttpClient()` mỗi request: mỗi lần tạo connection mới, socket ở trạng thái TIME_WAIT tích tụ, có thể cạn cổng (socket exhaustion). Dùng `IHttpClientFactory` (quản lý vòng đời handler) hoặc một `HttpClient` singleton với `SocketsHttpHandler.PooledConnectionLifetime` để vẫn cập nhật DNS.
-- `GrpcChannel` tốn kém khi tạo (kết nối HTTP/2, TLS). Tạo một lần và dùng lại; client gRPC tạo từ channel thì nhẹ. Dùng `AddGrpcClient` của `Grpc.Net.ClientFactory`.
-- Mỗi kết nối TLS mới tốn CPU cho handshake ở cả hai phía.
+#### Cách show off
+Trong báo cáo rà soát, bạn dùng đúng phép tính Little's law để bác bỏ ý tưởng tăng pool: với query 2 giây, pool 200 nghĩa là 200 truy vấn dồn vào SQL Server cùng lúc; với query 2 ms, pool 50 đã dư cho hàng chục nghìn request mỗi giây. Kết luận là giữ nguyên pool, sửa query trước. Bạn cũng chỉ ra service tạo `GrpcChannel` mới cho mỗi request.
 
-#### Trong báo cáo
-- Phần IV: query 2 giây + pool 200 → 200 kết nối dồn vào SQL Server; query 2 ms → một kết nối phục vụ 500 request/giây, pool 50 đủ cho 25.000 request/giây. Kết luận của báo cáo: giữ nguyên pool, sửa query trước.
-- `GrpcChannel` tạo mới mỗi request (Vấn đề 3); lỗi `Sockets.Connect failure` trong trace (Vấn đề 1).
-- `PREEMPTIVE_OS_CRYPTOPS` 1,09 tỷ lượt chờ, báo cáo diễn giải là kết nối TLS bị mở lại liên tục (Cụm 2 – Mục 12).
+> **Ví dụ:** "Khi có lỗi timeout lấy kết nối, đề xuất đầu tiên trong team là tăng pool. Tôi tính lại bằng Little's law: số kết nối cần bằng số request mỗi giây nhân thời gian giữ kết nối. Với query đang chạy khoảng 2 giây, pool lớn hơn chỉ có nghĩa là thêm hàng trăm truy vấn chạy đồng thời trên SQL Server, tranh CPU và khoá, mỗi truy vấn lại chậm hơn, cuối cùng có thể hết worker thread. Nếu đưa query về vài mili-giây, pool mặc định đã thừa. Nên tôi đề xuất giữ nguyên pool, sửa query và đưa các lời gọi ra ngoài khỏi đoạn đang giữ kết nối. Trong lúc đọc trace tôi cũng thấy service tạo kênh gRPC mới cho mỗi request, nên đề xuất đăng ký qua factory để dùng lại."
 
-#### Cách sửa
-- Sửa query chậm và bỏ gọi ngoài trong lúc giữ kết nối để giảm W.
-- `GrpcChannel` và `HttpClient` đăng ký qua factory, dùng lại.
-- Mỗi ứng dụng một connection string chuẩn (có `Application Name`) để pool không bị chia nhỏ và dễ truy session.
+Điểm ăn điểm:
+- Tính ra số kết nối bằng một phép nhân, không đoán.
+- Biết hết pool có triệu chứng đặc trưng: chờ đúng khoảng `Connect Timeout` rồi lỗi.
+- Nói được cơ chế `THREADPOOL` phía SQL Server.
+- Tính tổng kết nối theo số instance, không chỉ một process.
 
-#### Kiểm chứng
-- Số kết nối active và số request chờ pool (counter của SqlClient) trong giờ cao điểm.
-- Số session theo ứng dụng trong `sys.dm_exec_sessions`; `THREADPOOL` về 0.
-- Số kết nối TCP mới mỗi giây và số socket TIME_WAIT trên máy app giảm sau khi dùng lại channel.
+#### Câu hỏi vặn
+- **"2.000 request/giây, mỗi request giữ kết nối 30 ms, pool tối thiểu bao nhiêu?"** 2.000 × 0,03 = 60 kết nối đồng thời trung bình. Chia theo số instance, cộng dư cho lúc đỉnh vì tải không đều theo giây. Nếu cần nhiều hơn thế, giảm 30 ms trước khi tăng pool.
+- **"API lỗi timeout lấy kết nối, anh có tăng Max Pool Size không?"** Chưa. Tôi đo thời gian giữ kết nối và tìm nguyên nhân: query chậm, rò rỉ kết nối, gọi dịch vụ ngoài khi đang giữ kết nối, sync-over-async. Tăng pool khi query còn chậm chỉ dồn thêm tải vào SQL Server.
+- **"Wait THREADPOOL nghĩa là gì?"** SQL Server hết worker thread để gán cho request mới, thường do quá nhiều truy vấn bị chặn hoặc chạy lâu, hoặc song song quá mức. Xử lý gốc ở blocking, truy vấn chậm, cost threshold; tăng `max worker threads` không phải phản xạ đầu tiên.
+- **"Có 10 instance app, mỗi cái pool 100, chuyện gì có thể xảy ra?"** Tổng có thể lên 1.000 kết nối và gần chừng đó truy vấn đồng thời khi tải đỉnh hoặc khi query chậm. Cần tính theo tổng, và đặt giới hạn đồng thời ở tầng app (bulkhead) để bảo vệ DB.
+- **"Vì sao không tạo HttpClient hay GrpcChannel mới cho mỗi request?"** Mỗi lần là một kết nối TCP/TLS mới: tốn CPU handshake, socket TIME_WAIT tích tụ dẫn tới cạn cổng, mất lợi ích multiplexing của HTTP/2. Dùng `IHttpClientFactory` và channel dùng lại.
+- **"Code dùng async nhưng có chỗ .Result, liên quan gì tới pool?"** Sync-over-async giữ thread của app; khi tải cao, request xếp hàng ở thread pool trước cả khi kịp lấy kết nối, nhìn bên ngoài rất giống hết pool. Phải xem counter của thread pool chứ không chỉ counter của SqlClient.
+- **"Wait PREEMPTIVE_OS_CRYPTOPS rất cao, có phải do mở lại kết nối TLS liên tục?"** Có thể, nhưng wait này xuất hiện khi SQL Server gọi API mã hoá của Windows, không chỉ cho TLS. Tôi đối chiếu với số login mỗi giây và cấu hình mã hoá trước khi kết luận.
 
-#### Bẫy
-- Tăng `Max Pool Size` khi thấy lỗi hết pool mà chưa đo W.
-- Dùng `async` nhưng chặn bằng `.Result`: thread của app bị giữ, request xếp hàng trước khi kịp lấy kết nối, trông như hết pool.
-- `PREEMPTIVE_OS_CRYPTOPS` là wait khi SQL Server gọi API mã hoá của Windows; nó có thể đến từ TLS, nhưng cũng có thể từ các thao tác mã hoá khác. Cần đối chiếu với số login mỗi giây trước khi kết luận.
+#### Bẫy cần tránh
+- Tăng `Max Pool Size` khi chưa đo thời gian giữ kết nối.
+- Gọi HTTP/gRPC trong khi `SqlConnection` vẫn mở.
+- Mỗi chỗ trong code một connection string hơi khác nhau: pool bị chia nhỏ. Dùng một chuỗi chuẩn có `Application Name` để dễ truy session.
 
-#### Câu hỏi phỏng vấn
-- **"2.000 request/giây, mỗi request giữ kết nối 30 ms, pool tối thiểu bao nhiêu?"** 2.000 × 0,03 = 60 kết nối đồng thời trung bình. Chia cho số instance app, cộng dư cho lúc đỉnh. Nếu đang cần nhiều hơn thế, giảm 30 ms trước khi tăng pool.
-- **"API lỗi timeout lấy kết nối từ pool, bạn có tăng Max Pool Size không?"** Chưa. Tôi đo thời gian giữ kết nối và tìm nguyên nhân: query chậm, rò rỉ kết nối, gọi dịch vụ ngoài khi đang giữ kết nối, sync-over-async. Tăng pool khi query còn chậm chỉ dồn thêm tải vào SQL Server và có thể dẫn tới `THREADPOOL`.
-- **"Wait THREADPOOL trên SQL Server nghĩa là gì?"** SQL Server hết worker thread để gán cho request mới. Thường do quá nhiều truy vấn đồng thời bị chặn hoặc chạy lâu, hoặc song song quá mức. Xử lý gốc: blocking, truy vấn chậm, cost threshold; không tăng `max worker threads` như phản xạ đầu tiên.
-- **"Vì sao không tạo HttpClient hoặc GrpcChannel mới cho mỗi request?"** Mỗi lần tạo là một kết nối TCP/TLS mới: tốn CPU cho handshake, socket TIME_WAIT tích tụ dẫn tới cạn cổng, mất lợi ích multiplexing của HTTP/2. Dùng `IHttpClientFactory` và channel singleton.
-- **"Có 10 instance app, mỗi instance Max Pool Size 100, điều gì có thể xảy ra với SQL Server?"** Tổng có thể lên 1.000 kết nối và 1.000 truy vấn đồng thời khi tải đỉnh hoặc khi query chậm. Cần tính tổng theo số instance, kết hợp giới hạn đồng thời ở tầng app (bulkhead) để bảo vệ DB.
-
-#### Tóm tắt
-- Little's law: kết nối đang dùng = request/giây × thời gian giữ kết nối.
+#### Nhớ nhanh
+- Kết nối đang dùng = request/giây × thời gian giữ kết nối.
 - Pool tách theo connection string; mặc định 100; hết pool thì chờ `Connect Timeout` rồi lỗi.
-- Sửa query và giảm thời gian giữ kết nối trước khi tăng pool.
-- Tổng kết nối tới DB = số instance × pool mỗi instance.
-- `HttpClient`, `GrpcChannel` phải được dùng lại.
+- Giảm thời gian giữ kết nối trước khi tăng pool; query chậm + pool lớn dẫn tới `THREADPOOL`.
+- Tổng kết nối = số instance × pool; `HttpClient`, `GrpcChannel` phải dùng lại.
 
 #### Bài tập
 1. Tải đỉnh 6.000 request/giây chia đều cho 4 instance, mỗi request giữ kết nối 8 ms. Tính số kết nối trung bình mỗi instance và đề xuất `Max Pool Size`.
    **Đáp án:** Mỗi instance 1.500 × 0,008 = 12 kết nối trung bình. Tải không đều theo giây nên để dư nhiều lần, ví dụ 50; giữ mặc định 100 cũng không sao.
-2. Đoạn code mở `SqlConnection`, chạy proc, gọi HTTP sang dịch vụ thông báo (200 ms) rồi mới đóng kết nối. Tải 300 request/giây. Tính số kết nối trước và sau khi chuyển lệnh HTTP ra ngoài, biết proc chạy 5 ms.
+2. Code mở `SqlConnection`, chạy proc 5 ms, gọi HTTP sang dịch vụ thông báo 200 ms rồi mới đóng kết nối. Tải 300 request/giây. Tính số kết nối trước và sau khi chuyển lệnh HTTP ra ngoài.
    **Đáp án:** Trước: 300 × 0,205 ≈ 62 kết nối. Sau: 300 × 0,005 = 1,5 kết nối. Giảm khoảng 40 lần chỉ bằng đổi chỗ một dòng code.
-3. Viết câu T-SQL đếm số session theo ứng dụng và máy client.
+3. Viết T-SQL đếm số session theo ứng dụng và máy client.
    **Đáp án:** `SELECT program_name, host_name, COUNT(*) AS sessions FROM sys.dm_exec_sessions WHERE is_user_process = 1 GROUP BY program_name, host_name ORDER BY sessions DESC;`
 
 ### Bài 21.3. Không gọi server khác trong transaction
 
-#### Mục tiêu
-- Sau bài này, bạn giải thích được vì sao gọi linked server, HTTP hay gRPC bên trong transaction làm khoá bị giữ lâu.
-- Bạn cài được outbox pattern để giữ nhất quán mà không cần distributed transaction.
-- Bạn xử lý được truy vấn qua linked server bằng cách kéo dữ liệu vào `#temp` trước.
+#### Kiến thức
+Một transaction giữ khoá ghi tới khi `COMMIT` hoặc `ROLLBACK`. Vì vậy thời gian giữ khoá bằng tổng thời gian mọi thứ chạy bên trong nó, kể cả những thứ không liên quan tới DB.
 
-#### Cơ chế: khoá giữ tới khi transaction kết thúc
-Trong một transaction, khoá ghi (X) và khoá `UPDLOCK` được giữ tới khi `COMMIT` hoặc `ROLLBACK`. Thời gian giữ khoá bằng tổng thời gian mọi thứ chạy bên trong transaction. Nếu bên trong có một lời gọi ra server khác mất 5 giây, mọi phiên muốn đụng vào các dòng đó phải chờ 5 giây, và các phiên chờ đó lại giữ khoá của chúng: blocking lan rộng thành chuỗi.
+##### Cơ chế: khoá kéo dài theo việc chậm nhất
+Nếu bên trong transaction có một lời gọi ra server khác mất 5 giây, mọi phiên muốn đụng vào các dòng đang bị khoá phải chờ 5 giây; các phiên đang chờ lại giữ khoá của chúng, và blocking lan thành chuỗi.
 
 Linked server làm vấn đề nặng thêm:
-- Gọi proc remote trong transaction local khiến transaction được nâng thành distributed transaction do MSDTC điều phối (theo mặc định của tuỳ chọn `remote proc transaction promotion`). Commit lúc này là two-phase commit qua mạng giữa hai server; một bên chậm hoặc mất kết nối thì bên kia giữ khoá chờ.
-- Wait đặc trưng: `OLEDB` (SQL Server chờ provider OLE DB, tức chờ server kia trả lời), `MSQL_DQ` (chờ distributed query), các wait `DTC*`.
-- Optimizer ước lượng kém cho bảng remote; toán tử Remote Query có thể kéo cả bảng về rồi mới lọc/join ở local.
+- Gọi proc remote trong transaction local có thể khiến transaction được nâng thành distributed transaction do MSDTC điều phối (theo mặc định của tuỳ chọn `remote proc transaction promotion`). Commit lúc này là two-phase commit qua mạng; một bên chậm thì bên kia giữ khoá chờ.
+- Wait đặc trưng: `OLEDB` (chờ server kia trả lời), `MSQL_DQ` (chờ distributed query), các wait `DTC*`.
+- Optimizer ước lượng kém cho bảng remote; toán tử Remote Query có thể kéo cả bảng về rồi mới lọc ở local.
 
-#### Nguyên tắc transaction ngắn
-Bên trong transaction chỉ có thao tác trên DB local, theo thứ tự truy cập bảng cố định. Không gọi HTTP, gRPC, linked server, không chờ người dùng, không gửi email, không ghi file. Đọc chuẩn bị (lấy cấu hình, kiểm tra quyền) làm trước khi `BEGIN TRAN`.
+Nguyên tắc: trong transaction chỉ có thao tác trên DB local, theo thứ tự truy cập bảng cố định. Không HTTP, gRPC, linked server, email, ghi file, chờ người dùng. Đọc chuẩn bị (cấu hình, quyền) làm trước `BEGIN TRAN`.
 
-#### Outbox pattern
-Vấn đề cần giải: ghi vật phẩm ở server A và ghi lịch sử ở server B phải "cùng thành công". Outbox giải bằng cách biến thao tác thứ hai thành thao tác local:
-1. Trong cùng transaction local, ghi dữ liệu nghiệp vụ và ghi thêm một dòng vào bảng outbox (cùng DB). Hai thao tác này nguyên tử với nhau.
+##### Outbox pattern
+Bài toán: ghi vật phẩm ở server A và ghi lịch sử ở server B phải cùng thành công. Outbox biến thao tác thứ hai thành thao tác local:
+1. Trong cùng transaction local, ghi dữ liệu nghiệp vụ và ghi một dòng vào bảng outbox cùng DB. Hai việc này nguyên tử với nhau.
 2. Một worker đọc outbox theo lô, gửi sang server B (proc, API hoặc message broker), đánh dấu đã gửi.
-3. Phía nhận xử lý idempotent theo khoá duy nhất của sự kiện: nhận trùng thì bỏ qua.
+3. Phía nhận xử lý idempotent theo khoá duy nhất của sự kiện.
 
 ```sql
 BEGIN TRAN;
@@ -537,141 +463,123 @@ BEGIN TRAN;
             (SELECT @UserId AS userId, @ItemId AS itemId, @Qty AS qty FOR JSON PATH, WITHOUT_ARRAY_WRAPPER),
             SYSUTCDATETIME());
 COMMIT;
-```
 
-```sql
--- Worker lấy lô chưa gửi, nhiều worker chạy song song không lấy trùng
+-- Worker: nhiều worker chạy song song không lấy trùng
 SELECT TOP (500) Id, EventId, EventType, Payload
 FROM dbo.Outbox WITH (UPDLOCK, READPAST, ROWLOCK)
-WHERE SentAt IS NULL
-ORDER BY Id;
+WHERE SentAt IS NULL ORDER BY Id;
 ```
 
-Giao hàng là at-least-once: worker có thể gửi xong nhưng chết trước khi đánh dấu, lần sau gửi lại. Vì vậy phía nhận phải có unique key trên `EventId` (inbox) hoặc kiểm tra tồn tại trước khi ghi. Đánh đổi: dữ liệu ở server B trễ vài giây; cần job dọn outbox đã gửi và cảnh báo khi outbox tồn đọng.
+Giao hàng là at-least-once: worker có thể gửi xong nhưng chết trước khi đánh dấu, lần sau gửi lại. Phía nhận phải có unique key trên `EventId`. Đánh đổi: dữ liệu ở server B trễ vài giây; cần job dọn outbox đã gửi và cảnh báo khi tồn đọng.
 
-#### Kéo dữ liệu remote vào #temp
-Khi buộc phải đọc qua linked server, chạy một truy vấn remote có lọc sẵn, đưa kết quả vào `#temp` có primary key, rồi join ở local:
+##### Đọc remote: lọc ở phía remote
+Khi buộc phải đọc qua linked server, chạy truy vấn có lọc sẵn ở phía bên kia, đưa kết quả nhỏ vào `#temp` có primary key, rồi join ở local:
 
 ```sql
 CREATE TABLE #Q (QuestionId int PRIMARY KEY, Level tinyint);
 INSERT #Q (QuestionId, Level)
 EXEC ('SELECT QuestionId, Level FROM dbo.Question WHERE SubjectId = ?', @SubjectId) AT [REMOTE_BANK];
--- join #Q với bảng local; optimizer có số dòng thật và statistics trên #Q
 ```
 
-`EXEC ... AT` gửi nguyên câu lệnh cho server kia thực thi, nên bộ lọc chạy ở phía remote. Cần bật `rpc out` cho linked server.
+`EXEC ... AT` gửi nguyên câu lệnh sang server kia thực thi (cần bật `rpc out`), và optimizer có số dòng thật cùng statistics trên `#Q`.
 
-#### Trong báo cáo
-- Proc cập nhật vật phẩm người dùng (220,6 triệu lần, tối đa 29.997 ms): trong `BEGIN TRAN` gọi proc ghi lịch sử ở server giao dịch qua linked server, kèm khoá `UPDLOCK`; server kia chậm thì transaction treo (Cụm 2 – Mục 1).
-- `MSQL_DQ` 21,51% + `OLEDB` 16,88% = 38,4% thời gian chờ của cụm core (Cụm 2 – Mục 7).
-- Job sinh đề thi thử: Remote Query đọc 176,5 triệu trang mỗi lần chạy (Cụm 6 – Mục 7).
+#### Cách show off
+Ở mảng này bạn có cả việc đã làm thật lẫn đề xuất, cần tách bạch. Việc đã làm: một loạt commit bỏ các stored procedure join chéo database, thay bằng gọi riêng từng nơi. Phát hiện trong rà soát: proc cập nhật vật phẩm người dùng, được gọi rất nhiều, mở transaction có khoá rồi gọi proc ghi lịch sử ở server khác qua linked server; server kia chậm là transaction treo gần tới timeout, và hai wait của linked server chiếm gần 40% thời gian chờ của cụm. Outbox là đề xuất, chưa triển khai.
 
-#### Cách sửa
-- Đưa lệnh ghi lịch sử ra khỏi transaction bằng outbox; worker gửi sang server giao dịch.
-- Job sinh đề: kéo đúng tập câu hỏi cần vào `#temp` bằng `EXEC ... AT`, hoặc đồng bộ kho câu hỏi về local bằng replication nếu dùng thường xuyên.
+> **Ví dụ:** "Trong cụm dữ liệu lõi, gần 40% thời gian chờ là của linked server. Lần ngược lại, tôi thấy proc cập nhật vật phẩm mở transaction, khoá dòng của người dùng, rồi gọi sang server giao dịch để ghi lịch sử. Thời gian chạy tối đa ghi nhận trong DMV của proc này gần 30 giây, sát timeout, và trong suốt thời gian đó mọi request khác đụng tới vật phẩm của người đó phải chờ. Tôi đề xuất outbox: trong transaction chỉ cập nhật vật phẩm và ghi một dòng sự kiện vào bảng cùng database, một worker gửi sang server kia sau, phía nhận chặn trùng bằng khoá duy nhất. Cái giá là lịch sử trễ vài giây. Phần này tôi mới dừng ở thiết kế; việc tôi đã làm thật trước đó là bỏ một loạt proc join chéo database, cùng tinh thần là không để một database phụ thuộc trực tiếp vào database khác trong một câu lệnh."
 
-#### Kiểm chứng
-- Thời gian tối đa của proc vật phẩm giảm (không còn mốc gần 30 giây, sát timeout).
-- `OLEDB`, `MSQL_DQ` giảm trong wait stats; blocking chain do proc này biến mất.
-- Độ trễ outbox (thời gian từ `CreatedAt` tới `SentAt`) trong ngưỡng cam kết.
+Điểm ăn điểm:
+- Giải thích bằng cơ chế: khoá giữ tới hết transaction, linked server có thể nâng thành 2PC.
+- Nói rõ outbox là at-least-once, phía nhận phải idempotent, và cái giá là nhất quán trễ.
+- Biết đọc remote đúng cách: đẩy bộ lọc sang phía remote.
+- Tách bạch việc đã làm và việc mới thiết kế.
 
-#### Bẫy
-- Wait `OLEDB` không chỉ do linked server; một số DMV và `DBCC CHECKDB` cũng sinh wait này. Đối chiếu với truy vấn đang chạy trước khi quy hết cho linked server.
-- Outbox không có idempotency phía nhận thì gửi lại sẽ sinh bản ghi trùng.
-- Bỏ transaction hẳn để "nhanh" thì mất nhất quán: hai thao tác local vẫn phải nằm trong một transaction.
+#### Câu hỏi vặn
+- **"Tách lệnh ghi lịch sử ra khỏi transaction thì có mất nhất quán không?"** Không nếu dùng outbox: dòng sự kiện ghi vào bảng local trong cùng transaction nên nguyên tử với cập nhật vật phẩm; worker gửi sau, phía nhận idempotent. Đánh đổi là nhất quán trễ vài giây.
+- **"Vì sao gọi linked server trong transaction nguy hiểm hơn gọi ngoài transaction?"** Khoá local bị giữ suốt thời gian chờ server kia, và transaction có thể bị nâng thành distributed transaction với two-phase commit. Server kia chậm hoặc mất mạng thì blocking lan ra mọi phiên đụng tới các dòng đó.
+- **"Outbox đảm bảo giao hàng mức nào?"** At-least-once: worker có thể gửi xong rồi chết trước khi đánh dấu. Phía nhận phải idempotent, ví dụ unique key trên `EventId` hoặc bảng inbox.
+- **"Nhiều worker cùng đọc outbox, làm sao không xử lý trùng?"** Lấy lô với `UPDLOCK, READPAST, ROWLOCK` trong transaction ngắn để mỗi worker bỏ qua dòng worker khác đang giữ; hoặc cập nhật trạng thái "đang xử lý" kèm `OUTPUT` để nhận đúng các dòng mình giành được.
+- **"Truy vấn qua linked server đọc hơn trăm triệu trang mỗi lần, anh xử lý thế nào?"** Xem plan: Remote Query đang kéo cả bảng về để join local. Đẩy bộ lọc sang phía remote bằng `EXEC ... AT` hoặc `OPENQUERY`, đưa kết quả nhỏ vào `#temp` có PK rồi join. Nếu dùng thường xuyên thì đồng bộ dữ liệu về local.
+- **"Outbox anh đã chạy production chưa?"** Chưa, đó là đề xuất trong đợt rà soát. Nếu làm, tôi cần bảng outbox, worker có cảnh báo tồn đọng, khoá duy nhất ở phía nhận, và một feature flag để quay về cách gọi cũ nếu có sự cố.
+- **"Wait OLEDB cao có chắc là do linked server?"** Không chắc; một số DMV và `DBCC CHECKDB` cũng sinh wait này. Tôi đối chiếu với truy vấn đang chạy lúc wait tăng trước khi quy hết cho linked server.
 
-#### Câu hỏi phỏng vấn
-- **"Tách lệnh ghi lịch sử ra khỏi transaction thì có mất nhất quán không?"** Không nếu dùng outbox: dòng lịch sử ghi vào bảng outbox local trong cùng transaction nên nguyên tử với cập nhật vật phẩm; worker gửi sang server kia sau, idempotent theo khoá sự kiện. Đánh đổi là nhất quán trễ vài giây.
-- **"Vì sao gọi linked server trong transaction nguy hiểm hơn gọi ngoài transaction?"** Khoá local được giữ suốt thời gian chờ server kia; transaction có thể bị nâng thành distributed transaction với two-phase commit qua MSDTC. Server kia chậm hoặc mất mạng thì blocking lan ra mọi phiên đụng tới các dòng đó.
-- **"Outbox đảm bảo giao hàng mức nào và phía nhận cần làm gì?"** At-least-once: có thể gửi trùng khi worker chết giữa chừng. Phía nhận phải idempotent, ví dụ unique key trên `EventId` hoặc bảng inbox ghi nhận sự kiện đã xử lý.
-- **"Truy vấn qua linked server đọc 176 triệu trang, bạn xử lý thế nào?"** Xem plan: Remote Query kéo cả bảng về để join local. Đẩy bộ lọc sang phía remote bằng `EXEC ... AT` hoặc `OPENQUERY`, đưa kết quả nhỏ vào `#temp` có PK rồi join. Dùng thường xuyên thì đồng bộ dữ liệu về local.
-- **"Nhiều worker cùng đọc bảng outbox, làm sao không xử lý trùng?"** Lấy lô với `UPDLOCK, READPAST, ROWLOCK` trong transaction ngắn để mỗi worker bỏ qua dòng đang bị worker khác khoá; hoặc cập nhật trạng thái "đang xử lý" kèm `OUTPUT` để nhận đúng các dòng mình đã giành.
+#### Bẫy cần tránh
+- Bỏ transaction hẳn cho "nhanh": hai thao tác local vẫn phải nằm chung một transaction.
+- Outbox mà phía nhận không idempotent: gửi lại sinh bản ghi trùng.
+- Kể outbox như đã triển khai khi mới là thiết kế.
 
-#### Tóm tắt
-- Khoá giữ tới hết transaction; mọi thứ chậm bên trong transaction đều kéo dài khoá.
-- Linked server trong transaction dễ thành distributed transaction và sinh `OLEDB`, `MSQL_DQ`.
-- Outbox: ghi sự kiện vào bảng local trong cùng transaction, worker gửi sau, phía nhận idempotent.
+#### Nhớ nhanh
+- Khoá giữ tới hết transaction; mọi thứ chậm bên trong đều kéo dài khoá.
+- Linked server trong transaction dễ thành distributed transaction, sinh `OLEDB`, `MSQL_DQ`.
+- Outbox: sự kiện ghi local cùng transaction, worker gửi sau, phía nhận idempotent.
 - Đọc remote: lọc ở phía remote, đưa vào `#temp` có PK rồi join.
 
 #### Bài tập
-1. Viết lại luồng: `BEGIN TRAN; UPDATE vật phẩm; EXEC [server khác].proc_ghi_lich_su; COMMIT;` theo outbox, nêu các bảng và job cần có.
-   **Đáp án:** Bảng `Outbox(Id identity, EventId uniqueidentifier unique, EventType, Payload, CreatedAt, SentAt)`; transaction chỉ gồm `UPDATE` + `INSERT Outbox`; job/worker đọc lô `SentAt IS NULL` với `UPDLOCK, READPAST`, gọi proc ở server kia, cập nhật `SentAt`; phía server kia có unique key trên `EventId`; job dọn outbox cũ; cảnh báo khi tồn đọng.
-2. Proc dùng linked server đọc 3 cột từ bảng 50 triệu dòng rồi join với bảng local theo `SubjectId`. Viết lại để bộ lọc chạy ở remote.
-   **Đáp án:** Tạo `#temp` có PK; `INSERT #temp EXEC ('SELECT ... WHERE SubjectId = ?', @SubjectId) AT [REMOTE]`; join `#temp` với bảng local.
-3. Kể ba thứ không được nằm trong transaction.
-   **Đáp án:** Gọi HTTP/gRPC, gọi linked server, chờ thao tác người dùng; ngoài ra gửi email, ghi file, sleep/retry dài.
+1. Viết lại luồng `BEGIN TRAN; UPDATE vật phẩm; EXEC [server khác].proc_ghi_lich_su; COMMIT;` theo outbox, nêu các bảng và job cần có.
+   **Đáp án:** Bảng `Outbox(Id identity, EventId uniqueidentifier unique, EventType, Payload, CreatedAt, SentAt)`; transaction chỉ gồm `UPDATE` + `INSERT Outbox`; worker đọc lô `SentAt IS NULL` với `UPDLOCK, READPAST`, gọi proc ở server kia, cập nhật `SentAt`; phía kia unique key trên `EventId`; job dọn outbox cũ; cảnh báo tồn đọng.
+2. Kể ba thứ không được nằm trong transaction.
+   **Đáp án:** Gọi HTTP/gRPC, gọi linked server, chờ thao tác người dùng; ngoài ra gửi email, ghi file, sleep hoặc retry dài.
 
 ### Bài 21.4. Tách đọc và ghi
 
-#### Mục tiêu
-- Sau bài này, bạn phân loại được bảng theo cách truy cập để quyết định tách đọc hay không.
-- Bạn so sánh được transactional replication, Always On readable secondary, log shipping standby và CDC.
-- Bạn biết RCSI giải quyết gì và tốn gì.
+#### Kiến thức
+Luồng ghi nóng (lưu đáp án trong giờ thi) cần ít index để insert nhanh và cần CPU, worker luôn sẵn. Truy vấn báo cáo, CMS, tra cứu khiếu nại cần nhiều index và quét nhiều dữ liệu. Chạy chung một server thì hai nhu cầu kéo nhau: thêm index cho báo cáo làm chậm ghi; báo cáo chiếm worker và memory grant làm luồng thi phải chờ.
 
-#### Vì sao tách
-Luồng ghi nóng (lưu đáp án trong giờ thi) cần ít index để insert nhanh và cần CPU, worker luôn sẵn. Truy vấn báo cáo, CMS, tra cứu khiếu nại cần nhiều index và quét nhiều dữ liệu. Chạy chung một server thì hai nhu cầu xung đột: thêm index cho báo cáo làm chậm ghi; truy vấn báo cáo chiếm worker và memory grant làm luồng thi phải chờ.
-
-Báo cáo nội bộ chia bảng thành ba nhóm theo cách truy cập:
+##### Phân loại bảng trước khi chọn kiến trúc
 1. **Thuần ghi**: log hành vi, log đáp án. Hầu như chỉ insert, đọc lại khi tra cứu.
 2. **Ghi dồn rồi đọc tổng kết**: ghi trong ca thi, sau ca chạy tổng hợp.
-3. **Đọc-ghi trên đường nóng**: trạng thái bài làm, số lượt; vừa đọc vừa ghi trong luồng thi, không tách được.
+3. **Đọc-ghi trên đường nóng**: trạng thái bài làm, số lượt còn lại. Người dùng cần thấy ngay giá trị vừa ghi, không tách được.
 
-Nhóm 1 và 2 là ứng viên tách đọc sang server khác. Nhóm 3 ở lại primary và tối ưu bằng index đúng, RCSI, dòng nóng (bài 23.1).
+Nhóm 1 và 2 là ứng viên đưa phần đọc sang server khác. Nhóm 3 ở lại primary và tối ưu bằng index đúng, RCSI, xử lý dòng nóng.
 
-#### Các lựa chọn
+##### Các lựa chọn
 | Cách | Bản chất | Index ở bản đọc | Độ trễ | Ghi chú |
 |---|---|---|---|---|
-| Transactional replication | Bản sao logic: Log Reader đọc log, Distributor áp lệnh lên subscriber | Độc lập, tạo index riêng được | Giây | Bảng publish phải có primary key |
-| Always On readable secondary | Bản sao vật lý: gửi log và redo | Giống hệt primary | Giây (đồng bộ dữ liệu), redo có thể trễ | Cần Enterprise; Basic AG ở Standard không đọc được |
+| Transactional replication | Bản sao logic: đọc log, áp lệnh lên subscriber | Độc lập, tạo index riêng được | Giây | Bảng publish phải có primary key |
+| Always On readable secondary | Bản sao vật lý: gửi log và redo | Giống hệt primary | Giây, redo có thể trễ | Cần Enterprise; Basic AG ở Standard không đọc được |
 | Log shipping standby | Restore log định kỳ ở chế độ STANDBY | Giống hệt primary | Phút | Người đọc bị ngắt khi restore |
-| CDC → warehouse/ETL | Ghi nhận thay đổi vào bảng change, ETL nạp sang kho | Tự thiết kế | Phút | Hợp cho kho phân tích |
+| CDC → kho dữ liệu | Ghi nhận thay đổi, ETL nạp sang kho | Tự thiết kế | Phút | Hợp cho phân tích |
 
-Điểm mấu chốt: replication là bản sao logic nên subscriber có schema và index riêng, hợp khi primary muốn ít index còn báo cáo cần nhiều index. Readable secondary là bản sao vật lý nên không tạo được index riêng; statistics phụ trên secondary chỉ là statistics tạm trong tempdb.
+Điểm mấu chốt: replication là bản sao logic nên subscriber có index riêng, hợp khi primary muốn ít index còn báo cáo cần nhiều index. Readable secondary là bản sao vật lý nên không tạo được index riêng, và primary phải thêm 14 byte version tag vào dòng bị sửa vì secondary đọc theo snapshot. Điều hướng đọc sang secondary bằng `ApplicationIntent=ReadOnly` trong connection string trỏ vào listener.
 
-Readable secondary tự dùng snapshot isolation cho truy vấn đọc, nên primary phải thêm 14 byte version tag vào dòng khi bị sửa. Điều hướng đọc: connection string có `ApplicationIntent=ReadOnly` trỏ vào listener, cấu hình read-only routing.
+##### Chấp nhận dữ liệu cũ
+Mọi cách tách đọc đều có độ trễ đồng bộ. Phải thống nhất với nghiệp vụ màn hình nào chấp nhận dữ liệu cũ vài giây (báo cáo, thống kê), màn hình nào phải đọc primary (kết quả vừa nộp của chính người dùng: read-your-writes). Ứng dụng cần hai connection string, quy tắc chọn rõ ràng, và metric độ trễ đồng bộ.
 
-```text
-Server=tcp:exam-listener,1433;Database=ExamLog;ApplicationIntent=ReadOnly;MultiSubnetFailover=True;Application Name=ExamReport
-```
-
-#### Chấp nhận dữ liệu cũ
-Mọi cách tách đọc đều có độ trễ đồng bộ. Phải thống nhất với nghiệp vụ: màn hình nào chấp nhận dữ liệu cũ vài giây (báo cáo, thống kê), màn hình nào phải đọc primary (kết quả vừa nộp của chính người dùng: read-your-writes). Ứng dụng cần hai connection string và quy tắc chọn rõ ràng, có metric độ trễ đồng bộ.
-
-#### RCSI trên primary
-Read Committed Snapshot Isolation: ở mức READ COMMITTED, thay vì chờ khoá chia sẻ, câu đọc nhận phiên bản dòng đã commit tại thời điểm câu lệnh bắt đầu. Đọc không chặn ghi, ghi không chặn đọc.
+##### RCSI trên primary
+Read Committed Snapshot Isolation: câu đọc nhận phiên bản dòng đã commit tại lúc câu lệnh bắt đầu, thay vì chờ khoá. Đọc không chặn ghi, ghi không chặn đọc.
 
 ```sql
 ALTER DATABASE ExamLog SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE;
 ```
 
-Chi phí: version store trong tempdb (hoặc persistent version store trong DB khi bật Accelerated Database Recovery), 14 byte mỗi dòng bị sửa, thêm I/O cho tempdb. Rủi ro logic: code dựa vào việc đọc bị chặn để tuần tự hoá (đọc số dư rồi cập nhật) có thể sai; đoạn đó cần `UPDLOCK` hoặc cập nhật có điều kiện.
+Chi phí: version store trong tempdb, 14 byte mỗi dòng bị sửa, thêm I/O. Rủi ro logic: code dựa vào việc đọc bị chặn để tuần tự hoá ("đọc số dư rồi trừ") sẽ sai; đoạn đó cần `UPDLOCK` hoặc một câu cập nhật có điều kiện.
 
-#### Trong báo cáo
-- Phần VI: primary giữ bảng log không index phụ để insert dưới 0,5 ms; replica ở cụm kho dữ liệu có index cho CMS, báo cáo, tra cứu khiếu nại.
-- `THREADPOOL` ở cụm log thi chính thức vì truy vấn báo cáo chạy chung server với luồng thi (Cụm 3 – Mục 5).
-- Báo cáo đề xuất partition theo ca thi cho bảng log.
+#### Cách show off
+Phát hiện thật: ở cụm lưu log thi chính thức có wait `THREADPOOL`, vì truy vấn báo cáo chạy chung server với luồng thi. Đề xuất trong báo cáo: primary giữ bảng log ít index để insert nhanh, publish sang cụm kho dữ liệu bằng replication và tạo index cho báo cáo, CMS, tra cứu ở đó. Phần senior là bạn bắt được lỗ hổng của chính đề xuất này: bảng log đang là heap, mà replication đòi bảng có primary key. Ở AvePoint bạn từng làm với PostgreSQL replica, nên có trải nghiệm thật về read-your-writes để kể thêm nếu được hỏi.
 
-#### Cách sửa
-- Bảng nhóm 1 và 2 publish sang cụm kho dữ liệu bằng transactional replication; index cho báo cáo tạo ở subscriber.
-- Truy vấn báo cáo, CMS chuyển sang connection string trỏ subscriber.
-- Thêm metric độ trễ replication (tracer token, hoặc so sánh thời điểm dòng mới nhất).
+> **Ví dụ:** "Ở cụm log thi chính thức, wait stats có `THREADPOOL`, tức có lúc SQL Server hết worker thread, và lần ra thì thấy truy vấn báo cáo đang chạy chung server, tranh tài nguyên với luồng ghi đáp án. Tôi chia bảng theo cách truy cập: log thuần ghi, dữ liệu ghi dồn rồi tổng hợp, và trạng thái làm bài vừa đọc vừa ghi. Hai nhóm đầu tôi đề xuất đẩy sang cụm kho dữ liệu bằng transactional replication, vì subscriber được tạo index riêng cho báo cáo mà primary vẫn giữ ít index. Readable secondary không hợp vì index phải giống primary và cần bản Enterprise. Khi soát lại đề xuất, tôi thấy bảng log đang là heap, mà replication bắt buộc có primary key, nên phải thêm khoá trước. Màn hình xem kết quả vừa nộp thì vẫn đọc primary."
 
-#### Kiểm chứng
-- `THREADPOOL` trên primary về 0 trong giờ thi; thời gian insert log giữ dưới 0,5 ms.
-- Truy vấn báo cáo trên subscriber đạt mục tiêu reads/lần.
+Điểm ăn điểm:
+- Phân loại bảng theo cách truy cập trước khi nói tới công nghệ.
+- Lý do chọn replication thay vì readable secondary: index riêng và edition.
+- Bắt được điều kiện tiên quyết (primary key) mà đề xuất ban đầu bỏ sót.
+- Nói tới read-your-writes và metric độ trễ đồng bộ.
 
-#### Bẫy
-- Transactional replication yêu cầu bảng được publish có primary key. Báo cáo khuyên giữ heap trên primary rồi publish: phải thêm PK (ví dụ clustered trên cột identity) trước.
-- Coi readable secondary là "miễn phí": nó cần license Enterprise và tạo version tag trên primary.
-- Không xử lý read-your-writes: người dùng vừa nộp bài, màn hình đọc từ replica chưa thấy kết quả.
+#### Câu hỏi vặn
+- **"Readable secondary khác transactional replication thế nào cho bài toán này?"** Secondary là bản sao vật lý: index giống hệt primary, không tạo index riêng, cần Enterprise. Replication là bản sao logic: subscriber có index và schema riêng, hợp khi primary muốn ít index còn báo cáo cần nhiều; đổi lại cần PK và vận hành Distributor.
+- **"Tách đọc rồi thì màn hình xem kết quả vừa nộp xử lý thế nào?"** Màn hình đó đọc primary. Hoặc ứng dụng nhớ thời điểm ghi của người dùng và chỉ đọc replica khi độ trễ đồng bộ nhỏ hơn khoảng thời gian đã trôi qua. Báo cáo tổng hợp thì đọc replica.
+- **"Bảng nào không nên tách sang replica?"** Bảng đọc-ghi trên đường nóng, nơi người dùng phải thấy ngay giá trị vừa ghi: trạng thái bài làm, số lượt còn lại. Những bảng này tối ưu ngay tại primary.
+- **"Bật RCSI thì được gì, mất gì?"** Được: đọc không chờ khoá ghi, giảm blocking và deadlock đọc-ghi. Mất: version store trong tempdb, 14 byte mỗi dòng bị sửa, transaction dài giữ version store. Code tuần tự hoá bằng đọc bị chặn phải chuyển sang `UPDLOCK` hoặc cập nhật có điều kiện.
+- **"Thêm primary key cho heap log hàng trăm triệu dòng trên bản Standard thì sao?"** Standard không có `ONLINE = ON` và không tạo index song song, nên tạo clustered PK sẽ khoá bảng và chạy lâu. Phải làm trong khung bảo trì, thử trước trên bản sao dữ liệu thật để biết thời gian, hoặc tạo bảng mới có PK rồi chuyển dữ liệu theo lô.
+- **"Anh đo độ trễ replication bằng gì?"** Tracer token của replication, hoặc so thời điểm của dòng mới nhất giữa publisher và subscriber, đưa thành metric có cảnh báo.
+- **"Phần này đã triển khai chưa?"** Đây là đề xuất trong báo cáo rà soát. Tôi nói rõ điều kiện tiên quyết và cách đo để người triển khai có tiêu chí nghiệm thu; nếu bị hỏi kết quả, tôi chỉ nói khi có số đo thật.
 
-#### Câu hỏi phỏng vấn
-- **"Readable secondary của Always On khác transactional replication thế nào cho bài toán này?"** Secondary là bản sao vật lý: index giống hệt primary, không tạo index riêng được, cần Enterprise. Replication là bản sao logic: subscriber có index và schema riêng, hợp khi primary muốn ít index còn báo cáo cần nhiều index; đổi lại cần PK và vận hành Distributor.
-- **"Tách đọc sang replica thì xử lý màn hình xem kết quả vừa nộp thế nào?"** Màn hình đó đọc primary (read-your-writes), hoặc ứng dụng nhớ thời điểm ghi và chỉ đọc replica khi độ trễ đồng bộ nhỏ hơn khoảng thời gian đã trôi qua. Báo cáo tổng hợp thì đọc replica.
-- **"Bật RCSI thì được gì, mất gì?"** Được: đọc không chờ khoá ghi, giảm blocking và deadlock đọc-ghi. Mất: version store trong tempdb, 14 byte mỗi dòng bị sửa, transaction dài giữ version store. Code tuần tự hoá dựa trên đọc bị chặn phải chuyển sang `UPDLOCK` hoặc cập nhật có điều kiện.
-- **"Bảng nào không nên tách sang replica?"** Bảng đọc-ghi trên đường nóng, nơi người dùng cần thấy ngay giá trị vừa ghi (trạng thái bài làm, số lượt còn lại). Tách sẽ đọc phải dữ liệu cũ; tối ưu tại primary.
+#### Bẫy cần tránh
+- Coi readable secondary là "miễn phí": nó cần Enterprise và tạo version tag trên primary.
+- Quên read-your-writes: người dùng vừa nộp bài nhưng màn hình đọc từ replica chưa thấy.
+- Đề xuất publish heap qua replication.
 
-#### Tóm tắt
+#### Nhớ nhanh
 - Phân loại bảng theo cách truy cập trước khi chọn kiến trúc.
 - Replication: bản sao logic, index riêng, cần PK. Readable secondary: bản sao vật lý, index giống primary, cần Enterprise.
 - Mọi cách tách đọc đều trễ; xác định màn hình nào phải đọc primary.
@@ -679,38 +587,31 @@ Chi phí: version store trong tempdb (hoặc persistent version store trong DB k
 
 #### Bài tập
 1. Phân loại ba bảng: log đáp án từng câu, bảng điểm tổng kết sau ca, bảng trạng thái phiên làm bài. Đề xuất nơi đọc cho từng bảng.
-   **Đáp án:** Log đáp án: thuần ghi, tra cứu trên subscriber. Điểm tổng kết: ghi dồn rồi đọc, báo cáo trên subscriber, màn hình kết quả cá nhân ngay sau ca có thể đọc primary. Trạng thái phiên: đọc-ghi nóng, ở primary.
-2. Viết lệnh thêm clustered primary key cho một heap log có cột `Id bigint identity` trước khi publish.
-   **Đáp án:** `ALTER TABLE dbo.AnswerLog ADD CONSTRAINT PK_AnswerLog PRIMARY KEY CLUSTERED (Id) WITH (ONLINE = ON);` (`ONLINE` chỉ có ở Enterprise; ở Standard chạy trong khung bảo trì).
-3. Đọc số dư rồi cập nhật trong hai câu lệnh riêng; sau khi bật RCSI, nêu rủi ro và cách sửa.
-   **Đáp án:** Hai phiên cùng đọc số dư cũ rồi cùng trừ, gây âm. Sửa bằng một câu cập nhật có điều kiện `UPDATE ... SET Balance = Balance - @x WHERE Id = @id AND Balance >= @x` và kiểm tra `@@ROWCOUNT`, hoặc đọc với `UPDLOCK`.
+   **Đáp án:** Log đáp án: thuần ghi, tra cứu trên subscriber. Điểm tổng kết: báo cáo trên subscriber, màn hình kết quả cá nhân ngay sau ca đọc primary. Trạng thái phiên: đọc-ghi nóng, ở primary.
+2. Đọc số dư rồi cập nhật trong hai câu lệnh riêng; sau khi bật RCSI, nêu rủi ro và cách sửa.
+   **Đáp án:** Hai phiên cùng đọc số dư cũ rồi cùng trừ, gây âm. Sửa bằng `UPDATE ... SET Balance = Balance - @x WHERE Id = @id AND Balance >= @x` và kiểm tra `@@ROWCOUNT`, hoặc đọc với `UPDLOCK`.
 
 ### Bài 21.5. Xử lý lỗi và giám sát không làm hại DB
 
-#### Mục tiêu
-- Sau bài này, bạn nhận ra code nuốt exception ở C# và T-SQL, và sửa để lỗi lộ ra đúng chỗ.
-- Bạn kiểm tra được sự khớp kiểu dữ liệu giữa entity C#, tham số và cột SQL.
-- Bạn đánh giá được chi phí của công cụ giám sát và đặt cảnh báo theo SLO.
+#### Kiến thức
+Hai thứ tưởng là "lưới an toàn" lại hay gây hại: code bắt lỗi rồi giả vờ như không có gì, và công cụ giám sát poll database quá dày.
 
-#### Không nuốt exception
+##### Không nuốt exception
 Nuốt exception là bắt lỗi rồi trả về giá trị trông như bình thường:
 
 ```csharp
 // Sai: lỗi DB biến thành "không có ai trong bảng xếp hạng"
-public async Task<List<RankItem>> GetRankAsync(long userId)
-{
-    try { return await _repo.GetRankAsync(userId); }
-    catch { return new List<RankItem>(); }
-}
+try { return await _repo.GetRankAsync(userId); }
+catch { return new List<RankItem>(); }
 ```
 
-Hậu quả: người dùng thấy dữ liệu sai thay vì thông báo lỗi; metric tỉ lệ lỗi của API vẫn xanh; nếu có cache phía trên, kết quả rỗng còn bị lưu lại. Cách đúng: chỉ bắt exception khi có hành động cụ thể (retry lỗi tạm thời, chuyển sang dữ liệu dự phòng có đánh dấu), luôn ghi log có ngữ cảnh, và để phần còn lại lan lên middleware xử lý lỗi chung.
+Hậu quả: người dùng thấy dữ liệu sai thay vì thông báo lỗi; metric tỉ lệ lỗi của API vẫn xanh; nếu có cache phía trên, kết quả rỗng còn bị lưu lại. Cách đúng: chỉ bắt exception khi có hành động cụ thể (retry lỗi tạm thời, chuyển sang dữ liệu dự phòng có đánh dấu), luôn ghi log có ngữ cảnh, phần còn lại để middleware xử lý lỗi chung.
 
 ```csharp
 catch (SqlException ex) when (ex.Number is 1205 or -2)   // deadlock victim, timeout
 {
     _logger.LogWarning(ex, "Rank query failed for {UserId}", userId);
-    throw;                                                // để retry policy hoặc middleware xử lý
+    throw;
 }
 ```
 
@@ -725,122 +626,104 @@ BEGIN TRY
 END TRY
 BEGIN CATCH
     IF @@TRANCOUNT > 0 ROLLBACK;
-    -- ghi bảng log lỗi nếu cần (sau ROLLBACK để không bị rollback theo)
+    -- ghi bảng log lỗi ở đây, sau ROLLBACK để không bị rollback theo
     THROW;
 END CATCH;
 ```
 
-`XACT_ABORT ON` đảm bảo khi có lỗi (kể cả client timeout huỷ lệnh), transaction bị rollback thay vì để lại transaction mở giữ khoá.
+`XACT_ABORT ON` đảm bảo khi có lỗi, kể cả client timeout huỷ lệnh, transaction bị rollback thay vì để lại transaction mở giữ khoá.
 
-#### Kiểu dữ liệu khớp nhau
-- Entity C# dùng `long`, tham số proc là `INT`: khi ID vượt 2.147.483.647, gọi proc lỗi tràn số. Ngược lại, tham số khai báo sai kiểu so với cột gây implicit conversion; nặng nhất là `nvarchar` so với cột `varchar` trong collation SQL, khiến index seek thành scan.
-- Cột hạng kiểu `int` trong DB nhưng `string` trong entity: sắp xếp theo chuỗi ("10" đứng trước "9"), tốn chuyển đổi, lỗi khó thấy.
-- Khai báo kiểu tham số tường minh (`SqlDbType.BigInt`, `SqlDbType.VarChar` có độ dài) thay vì `AddWithValue`, vì `AddWithValue` suy kiểu từ giá trị .NET (chuỗi luôn thành `nvarchar` với độ dài theo giá trị, làm plan cache bị nhân bản theo độ dài).
+##### Kiểu dữ liệu khớp từ entity tới cột
+- Entity dùng `long`, tham số proc là `INT`: ID vượt 2,1 tỉ là lỗi tràn số.
+- Tham số khác kiểu với cột gây implicit conversion; nặng nhất là `nvarchar` so với cột `varchar` theo collation SQL, biến seek thành scan.
+- Cột hạng kiểu `int` trong DB nhưng `string` trong entity: sắp theo chuỗi ("10" đứng trước "9").
+- Khai báo `SqlDbType` và độ dài tường minh thay vì `AddWithValue`: `AddWithValue` biến mọi chuỗi thành `nvarchar` có độ dài theo giá trị, vừa gây conversion vừa nhân bản plan theo độ dài.
 
-Kiểm tra implicit conversion trong plan cache: tìm cảnh báo `PlanAffectingConvert` trong XML plan, hoặc dùng `sp_BlitzCache` (cột Warnings).
+Tìm implicit conversion trong plan cache: cảnh báo `PlanAffectingConvert` trong XML plan, hoặc cột Warnings của `sp_BlitzCache`.
 
-#### Giám sát cũng là tải
-Công cụ giám sát poll DMV mỗi vài giây trên mọi DB, gọi `xp_*` để đọc thông tin hệ điều hành, đọc plan cache đầy đủ: tất cả đều chạy trên chính server đang giám sát. Câu DMV nặng (quét `sys.dm_exec_query_stats` kèm `sys.dm_exec_query_plan` cho mọi dòng) có thể tốn nhiều CPU và memory grant. Nguyên tắc: chu kỳ poll hợp lý (30–60 giây cho số liệu tổng, lâu hơn cho plan cache), dùng Query Store và Extended Events (ghi vào file, lọc chặt) thay cho poll liên tục, đo chính công cụ giám sát như một ứng dụng (lọc theo `program_name`).
+##### Giám sát cũng là tải
+Công cụ giám sát poll DMV mỗi vài giây trên mọi DB, gọi extended stored procedure `xp_*` để đọc thông tin hệ điều hành, đọc cả plan cache, và tất cả chạy trên chính server đang được giám sát. Câu DMV nặng có thể tốn nhiều CPU và memory grant. Nguyên tắc: chu kỳ poll hợp lý (30–60 giây cho số tổng, thưa hơn cho plan cache), dùng Query Store và Extended Events thay cho poll liên tục, và đo chính công cụ giám sát như một ứng dụng (lọc theo `program_name`).
 
-#### Cảnh báo theo SLO
-Cảnh báo tốt cho biết người dùng đang bị ảnh hưởng hoặc sắp bị ảnh hưởng, không phải mọi chỉ số vượt ngưỡng:
-- Theo SLO: tỉ lệ lỗi, p95/p99 latency của API quan trọng, cảnh báo theo burn rate (tốc độ tiêu error budget, bài 23.7).
-- Theo tài nguyên sắp cạn: % log đã dùng, dung lượng ổ, tuổi bản backup log gần nhất, độ trễ replication, tồn đọng outbox.
-- Theo bất thường: wait type mới xuất hiện hoặc tăng đột biến so với cùng giờ tuần trước; tỉ lệ response rỗng của API tăng bất thường (phát hiện lỗi bị nuốt).
+##### Cảnh báo theo SLO
+Cảnh báo tốt nói rằng người dùng đang hoặc sắp bị ảnh hưởng:
+- Theo SLO: tỉ lệ lỗi, p95/p99 của API quan trọng, tốc độ tiêu error budget.
+- Theo tài nguyên sắp cạn: % log, dung lượng ổ, tuổi bản backup log gần nhất, độ trễ replication, outbox tồn đọng.
+- Theo bất thường: wait mới tăng đột biến so với cùng giờ tuần trước; tỉ lệ response rỗng tăng bất thường, dấu hiệu có lỗi đang bị nuốt.
 
-#### Trong báo cáo
-- Hai lớp proxy C# bắt exception rồi trả null hoặc danh sách rỗng; bảng log lỗi không ghi nhận gì (Cụm 4 – Mục 11).
-- Tham số user kiểu `INT` trong proc nhưng `long` trong entity; cột hạng `int` trong DB nhưng `string` trong entity (Cụm 4 – Mục 11).
-- Công cụ giám sát: `MSQL_XP` 658.519 giây, `RESOURCE_SEMAPHORE_MUTEX` 33.739 giây; báo cáo coi chỉnh lại công cụ giám sát là việc có tác động lớn nhất ở cụm này (Cụm 3 – Mục 10).
+#### Cách show off
+Ba phát hiện thật ở cụm kho dữ liệu và báo cáo: hai lớp proxy C# bắt exception rồi trả null hoặc danh sách rỗng, nên bảng log lỗi không ghi được gì; tham số user là `INT` trong proc nhưng `long` trong entity, cột hạng là `int` trong DB nhưng `string` trong entity; ở cụm log thi, chính công cụ giám sát tạo nhiều wait đáng kể, và bạn đánh giá chỉnh lại nó là việc có tác động lớn nhất ở cụm đó.
 
-#### Cách sửa
-- Bỏ `catch` trả rỗng ở proxy; ghi log có ngữ cảnh; để middleware trả lỗi chuẩn.
-- Đổi tham số proc sang `BIGINT`, entity hạng sang `int`; rà soát kiểu tham số toàn bộ proc của luồng đó.
-- Giảm chu kỳ poll, tắt collector gọi `xp_*` không cần, chuyển sang Query Store/Extended Events.
+> **Ví dụ:** "Khi rà luồng xếp hạng, tôi thấy bảng log lỗi gần như không có gì, dù luồng đó gọi DB rất nhiều trong giờ cao điểm. Đọc code thì thấy hai lớp proxy bắt mọi exception rồi trả null hoặc danh sách rỗng, nên lỗi DB biến thành dữ liệu, metric lỗi vẫn xanh. Tôi đề xuất bỏ các khối đó, ghi log có ngữ cảnh và để middleware trả lỗi chuẩn, đồng thời báo trước với team là tỉ lệ lỗi sẽ tăng lúc đầu, vì đó là những lỗi trước đây bị giấu. Cùng luồng đó tôi thấy ID người dùng là `long` ở C# nhưng `INT` ở proc, sẽ tràn khi ID vượt giới hạn, nên rà lại kiểu tham số của cả luồng. Ở cụm khác, chính công cụ giám sát gọi extended stored procedure liên tục và tạo nhiều wait; tôi đề xuất giãn chu kỳ poll và chuyển sang Query Store."
 
-#### Kiểm chứng
-- Tỉ lệ lỗi của API xếp hạng có số liệu thật (có thể tăng lúc đầu: đó là lỗi trước đây bị giấu); tỉ lệ response rỗng giảm.
-- `MSQL_XP` giảm; CPU do phiên của công cụ giám sát (`program_name`) giảm.
+Điểm ăn điểm:
+- Nói trước rằng sửa nuốt lỗi sẽ làm tỉ lệ lỗi tăng, và vì sao đó là tin tốt.
+- Nhắc `XACT_ABORT ON` và vị trí ghi log lỗi sau `ROLLBACK`.
+- Coi công cụ giám sát là một workload phải đo.
+- Đề xuất cảnh báo theo tỉ lệ response rỗng để bắt lỗi bị nuốt.
 
-#### Bẫy
+#### Câu hỏi vặn
+- **"API xếp hạng trả rỗng trong giờ thi mà log không có lỗi, anh điều tra từ đâu?"** Nghi exception bị nuốt: tìm `catch` trả rỗng ở proxy và `BEGIN CATCH` không `THROW` trong proc. Đo tỉ lệ response rỗng theo thời gian, đối chiếu với giờ cao điểm; xem timeout, deadlock trong session `system_health`.
+- **"Vì sao không dùng AddWithValue?"** Nó suy kiểu từ giá trị .NET: chuỗi thành `nvarchar` có độ dài theo giá trị, gây implicit conversion với cột `varchar` (có thể mất seek) và sinh nhiều plan theo độ dài. Khai báo `SqlDbType` và độ dài tường minh.
+- **"SET XACT_ABORT ON có tác dụng gì?"** Khi có lỗi runtime, kể cả client timeout huỷ lệnh, transaction bị rollback toàn bộ thay vì để lại transaction mở giữ khoá. Đi kèm `TRY/CATCH` với `ROLLBACK` và `THROW`.
+- **"Retry những lỗi SQL nào?"** Lỗi tạm thời: deadlock 1205, timeout, lỗi kết nối, failover. Không retry lỗi logic như trùng khoá 2627/2601, vi phạm ràng buộc 547, tràn số; retry chúng chỉ nhân tải.
+- **"Làm sao biết công cụ giám sát đang làm hại DB?"** Lọc phiên theo `program_name` của công cụ, đo CPU, reads và wait của chúng (`MSQL_XP` khi gọi `xp_*`), xem chu kỳ poll và câu DMV nặng. Giám sát cũng phải nằm trong ngân sách tải.
+- **"Bỏ nuốt lỗi xong tỉ lệ lỗi tăng vọt, sếp hỏi thì anh nói sao?"** Đó là lỗi vốn đã có, trước đây bị giấu thành dữ liệu sai. Tôi báo trước khi deploy, kèm danh sách nguyên nhân lỗi xuất hiện để xử lý tiếp, thay vì để người dùng tiếp tục thấy bảng xếp hạng trống.
+
+#### Bẫy cần tránh
 - Bỏ nuốt exception mà không có middleware xử lý lỗi: người dùng nhận stack trace.
-- Retry mọi `SqlException`: lỗi logic (vi phạm khoá, dữ liệu sai) retry chỉ nhân tải. Chỉ retry lỗi tạm thời (deadlock 1205, timeout, lỗi kết nối, failover).
-- Ghi bảng log lỗi trước `ROLLBACK` trong `CATCH`: dòng log bị rollback cùng transaction.
+- Ghi bảng log lỗi trước `ROLLBACK` trong `CATCH`: dòng log bị rollback theo.
+- Cảnh báo theo mọi chỉ số vượt ngưỡng: báo động giả nhiều, người trực bỏ qua cả cảnh báo thật.
 
-#### Câu hỏi phỏng vấn
-- **"API xếp hạng trả danh sách rỗng trong giờ thi mà log không có lỗi, bạn điều tra từ đâu?"** Nghi exception bị nuốt: tìm `catch` trả rỗng ở proxy và `BEGIN CATCH` không `THROW` trong proc. Đo tỉ lệ response rỗng theo thời gian, đối chiếu với giờ cao điểm. Kiểm tra timeout, deadlock trong session `system_health`.
-- **"Vì sao không nên dùng AddWithValue cho tham số SQL?"** Nó suy kiểu từ giá trị .NET: chuỗi thành `nvarchar` có độ dài theo giá trị, gây implicit conversion với cột `varchar` (có thể mất index seek) và sinh nhiều plan theo độ dài khác nhau. Khai báo `SqlDbType` và độ dài tường minh.
-- **"SET XACT_ABORT ON có tác dụng gì trong proc?"** Khi có lỗi runtime, kể cả client timeout huỷ lệnh, transaction bị rollback toàn bộ thay vì để lại transaction mở giữ khoá. Kết hợp `TRY/CATCH` với `ROLLBACK` và `THROW`.
-- **"Làm sao biết công cụ giám sát đang làm hại DB?"** Lọc phiên theo `program_name` của công cụ, đo CPU, reads và wait của chúng (`MSQL_XP` khi gọi `xp_*`); xem chu kỳ poll và câu DMV nặng. Giám sát cũng là một ứng dụng, phải nằm trong ngân sách tải.
-- **"Bạn đặt những cảnh báo nào cho một DB phục vụ kỳ thi?"** Theo SLO: tỉ lệ lỗi và p99 của API nộp bài, lấy đề. Theo tài nguyên: % log, dung lượng ổ, tuổi backup log, độ trễ replication. Theo bất thường: blocking kéo dài, wait mới tăng đột biến, tỉ lệ response rỗng.
-
-#### Tóm tắt
+#### Nhớ nhanh
 - Nuốt exception biến lỗi thành dữ liệu sai và làm metric lỗi vô nghĩa.
-- T-SQL: `XACT_ABORT ON`, `TRY/CATCH` với `ROLLBACK` và `THROW`.
-- Kiểu dữ liệu phải khớp từ entity tới tham số tới cột; khai báo `SqlDbType` tường minh.
-- Công cụ giám sát là tải thật; đo và giới hạn nó.
-- Cảnh báo theo SLO và tài nguyên sắp cạn, không theo mọi chỉ số.
+- T-SQL: `XACT_ABORT ON`, `TRY/CATCH` với `ROLLBACK` rồi `THROW`.
+- Kiểu dữ liệu khớp từ entity tới tham số tới cột; khai báo `SqlDbType` tường minh.
+- Công cụ giám sát là tải thật; cảnh báo theo SLO và tài nguyên sắp cạn.
 
 #### Bài tập
 1. Viết lại khối `BEGIN CATCH SELECT -1 AS Result END CATCH` cho đúng, có ghi log lỗi.
    **Đáp án:** `BEGIN CATCH IF @@TRANCOUNT > 0 ROLLBACK; INSERT dbo.ErrorLog (...) VALUES (ERROR_NUMBER(), ERROR_MESSAGE(), ERROR_PROCEDURE(), SYSUTCDATETIME()); THROW; END CATCH`, kèm `SET XACT_ABORT ON` ở đầu proc.
-2. Entity có `long UserId`, proc nhận `@UserId INT`, cột là `BIGINT`. Nêu hai vấn đề và cách sửa.
-   **Đáp án:** ID vượt giới hạn `int` thì lỗi tràn số khi gọi proc; giá trị đã bị ép kiểu trước khi so với cột. Sửa tham số proc sang `BIGINT`, khai báo `SqlDbType.BigInt` ở C#.
-3. Liệt kê các mã lỗi SQL Server nên retry và các mã không nên retry.
-   **Đáp án:** Nên retry: 1205 (deadlock victim), timeout phía client, lỗi kết nối tạm thời, lỗi failover AG. Không retry: 2627/2601 (trùng khoá), 547 (vi phạm ràng buộc), 8115 (tràn số), lỗi do `THROW` nghiệp vụ.
+2. Entity có `long UserId`, proc nhận `@UserId INT`, cột là `BIGINT`. Nêu vấn đề và cách sửa.
+   **Đáp án:** ID vượt giới hạn `int` thì lỗi tràn số khi gọi proc. Sửa tham số proc sang `BIGINT`, khai báo `SqlDbType.BigInt` ở C#, rà các proc cùng luồng.
 
 ## Chương 22. Đọc báo cáo bằng con mắt senior
-Báo cáo hiệu năng APM nội bộ làm tốt một việc mà nhiều báo cáo bỏ qua: mỗi đề xuất gắn với số đo và tiêu chí nghiệm thu cụ thể ("spill phải về 0", "reads dưới 20.000 trang/lần"). Nhưng một báo cáo dài, viết trên hàng chục DB, chắc chắn có chỗ kết luận vượt quá số liệu, hoặc đề xuất đúng về kỹ thuật nhưng sai về rủi ro.
+Một báo cáo hiệu năng tốt gắn mỗi đề xuất với số đo và tiêu chí nghiệm thu cụ thể, kiểu "spill phải về 0" hay "mỗi lần chạy đọc dưới 20.000 trang". Nhưng báo cáo nào viết trên hàng chục database cũng có chỗ kết luận vượt quá số liệu, hoặc đề xuất đúng về kỹ thuật mà sai về rủi ro. Báo cáo rà soát bạn dẫn cũng không ngoại lệ.
 
-Ở vòng phỏng vấn senior, kể "đã sửa gì" chưa đủ. Interviewer muốn thấy bạn biết nghi ngờ đúng chỗ: số liệu này đo cái gì, kết luận này đúng trong điều kiện nào, đề xuất này có thể gây hại ra sao, và bạn kiểm chứng bằng cách nào. Chương này gom các điểm phản biện rải rác trong Phần VI thành phương pháp, rồi luyện cách sắp thứ tự ưu tiên và trình bày.
-
-Học xong chương này, bạn đọc một báo cáo hiệu năng và chỉ ra được các chỗ cần kiểm chứng lại, đề xuất được thứ tự triển khai có rủi ro thấp, và kể lại câu chuyện tối ưu một cách trung thực, có số.
+Ở vòng senior, kể "đã sửa gì" chưa đủ. Người phỏng vấn muốn thấy bạn nghi ngờ đúng chỗ: số này đo cái gì, kết luận đúng trong điều kiện nào, đề xuất có thể gây hại ra sao, kiểm chứng bằng cách nào. Chương này gom các điểm phản biện rải rác trong Phần VI thành phương pháp, rồi luyện cách sắp thứ tự ưu tiên và kể lại một đợt tối ưu cho trung thực.
 
 ### Bài 22.1. Phản biện số liệu và kết luận trong báo cáo hiệu năng
 
-#### Mục tiêu
-- Sau bài này, bạn áp dụng được bốn câu hỏi kiểm tra cho mọi kết luận trong báo cáo hiệu năng.
-- Bạn chỉ ra được các chỗ kết luận có thể sai trong báo cáo nội bộ và nêu cách kiểm chứng từng chỗ.
-- Bạn phân biệt được số liệu tích luỹ, số liệu theo khoảng thời gian và số liệu đã lọc nhiễu.
+#### Kiến thức
+Phần lớn sai lầm trong báo cáo hiệu năng không phải do tính sai, mà do đọc sai: hiểu nhầm con số đang đo cái gì, hoặc áp một kết luận ra ngoài điều kiện nó đúng.
 
-#### Bốn câu hỏi cho mọi kết luận
-1. **Số này đo cái gì, ở đâu, trong khoảng thời gian nào?** Wait stats trong `sys.dm_os_wait_stats` tích luỹ từ lần khởi động cuối; server chạy 200 ngày thì "3,58 triệu giây `WRITELOG`" là tổng 200 ngày, không phải tình trạng hiện tại. Số đúng để ra quyết định là chênh lệch giữa hai lần chụp trong giờ cao điểm.
-2. **Đơn vị đếm có đúng như người viết hiểu không?** Một dòng DMV có thể là một câu lệnh, một plan, hay một proc; lượt chờ khác thời gian chờ.
+##### Bốn câu hỏi cho mọi kết luận
+1. **Số này đo cái gì, ở đâu, trong khoảng thời gian nào?** `sys.dm_os_wait_stats` cộng dồn từ lần khởi động cuối. Server chạy 200 ngày thì "hàng triệu giây `WRITELOG`" là tổng 200 ngày, không phải tình trạng hôm nay.
+2. **Đơn vị đếm có đúng như người viết hiểu không?** Một dòng DMV có thể là một câu lệnh, một plan hay một proc; lượt chờ khác thời gian chờ.
 3. **Kết luận đúng trong điều kiện nào?** Phiên bản, edition, compatibility level, recovery model, cấu hình.
-4. **Đề xuất có thể gây hại gì, và rollback thế nào?** Mọi thay đổi phải có rủi ro được nêu và đường lui.
+4. **Đề xuất có thể gây hại gì, và rollback thế nào?**
 
-#### Các điểm cần phản biện trong báo cáo
-Mỗi điểm dưới đây có bài chi tiết trong Phần VI; ở đây gom lại theo bốn câu hỏi.
-
-**Đơn vị đếm.**
-- Nhiều dòng trong `sys.dm_exec_query_stats` cho cùng một proc chưa chắc là nhiều plan. View này có một dòng cho mỗi câu lệnh trong mỗi plan; proc 12 câu lệnh có 12 dòng cùng một `plan_handle`. Muốn biết số plan, đếm `DISTINCT plan_handle`; muốn biết lý do có nhiều plan, xem `sys.dm_exec_plan_attributes` (khác `set_options`, khác user mặc định schema...).
-- Lượt chờ khác thời gian chờ: 460 triệu lượt `CXCONSUMER` chỉ nói có nhiều trao đổi song song, không nói chúng tốn bao lâu.
-
-**Nhiễu nền.**
-- `QDS_ASYNC_QUEUE` (Query Store ghi dữ liệu nền), `WAIT_XTP_HOST_WAIT` (In-Memory OLTP chờ nền) và nhiều wait khác như `SLEEP_TASK`, `LAZYWRITER_SLEEP`, `XE_TIMER_EVENT` là wait nền, cần lọc trước khi tính phần trăm. Không lọc thì phần trăm của các wait thật bị pha loãng hoặc bảng xếp hạng bị đẩy lệch. Script wait stats của Paul Randal có sẵn danh sách lọc.
+##### Đơn vị đếm và nhiễu nền
+- Một proc có nhiều dòng trong `sys.dm_exec_query_stats` chưa chắc có nhiều plan: view này có một dòng cho mỗi câu lệnh trong mỗi plan. Đếm `DISTINCT plan_handle` để biết số plan; xem `sys.dm_exec_plan_attributes` để biết vì sao có nhiều plan (khác `set_options`, khác schema mặc định...).
+- Hàng trăm triệu lượt `CXCONSUMER` chỉ nói có nhiều trao đổi song song, không nói chúng tốn bao lâu.
+- Wait nền như `SLEEP_TASK`, `LAZYWRITER_SLEEP`, `XE_TIMER_EVENT`, `QDS_ASYNC_QUEUE`, `WAIT_XTP_HOST_WAIT` tăng đều kể cả khi server rảnh; không lọc thì phần trăm của wait thật bị lệch. Script wait stats của Paul Randal và `sp_BlitzFirst` có sẵn danh sách lọc.
 - `OLEDB` không chỉ do linked server; một số DMV và `DBCC CHECKDB` cũng sinh wait này.
 
-**Điều kiện phiên bản, edition, cấu hình.**
-- Ngưỡng tự cập nhật statistics phụ thuộc compatibility level: từ compat 130 dùng ngưỡng động khoảng căn bậc hai của (1.000 × số dòng) cho bảng lớn; compat thấp hơn dùng 500 + 20% số dòng (trừ khi bật trace flag 2371). Kết luận "statistics bảng 100 triệu dòng chỉ cập nhật sau 20 triệu thay đổi" chỉ đúng với compat dưới 130.
-- Bảng biến trên SQL Server 2019 với compat 150 trở lên đã được ước lượng đúng tổng số dòng nhờ table variable deferred compilation, nhưng vẫn không có histogram, nên phân bố giá trị vẫn sai. Kết luận "bảng biến luôn ước lượng 1 dòng" là cũ.
-- `ONLINE = ON` khi tạo hay rebuild index chỉ có ở Enterprise (và Developer, Azure SQL). Đề xuất "rebuild online trong giờ hành chính" cần kiểm tra edition trước.
+##### Điều kiện phiên bản, edition, cấu hình
+- Ngưỡng tự cập nhật statistics: từ compat 130 là ngưỡng động khoảng căn bậc hai của (1.000 × số dòng), bảng 100 triệu dòng khoảng 316.000 thay đổi; compat thấp hơn mới là 500 + 20% số dòng. Kết luận "bảng 100 triệu dòng chỉ cập nhật statistics sau 20 triệu thay đổi" chỉ đúng với compat cũ.
+- Bảng biến từ SQL Server 2019 (compat 150) được ước lượng đúng tổng số dòng nhờ deferred compilation, nhưng vẫn không có histogram. "Bảng biến luôn ước lượng 1 dòng" là kiến thức cũ.
+- `ONLINE = ON` khi tạo hay rebuild index, và tạo index song song, chỉ có ở Enterprise (và Developer, Azure SQL). Trên Standard, tạo index lớn khoá bảng và chạy một luồng.
 
-**Rủi ro của đề xuất.**
-- Chuyển recovery model sang SIMPLE hàng loạt phải hỏi RPO trước: DB thanh toán, kết quả thi mất khả năng khôi phục tới thời điểm (bài 20.2).
-- Clustered key identity bỏ được page split giữa trang nhưng tạo điểm nóng ở trang cuối (last page insert contention, wait `PAGELATCH_EX`) khi insert đồng thời cao. SQL Server 2019 có `OPTIMIZE_FOR_SEQUENTIAL_KEY` để giảm vấn đề này.
-- `OPTION (RECOMPILE)` sửa parameter sniffing nhưng biên dịch lại mỗi lần chạy; proc gọi hàng triệu lần mỗi ngày sẽ tốn CPU đáng kể. Cần đo CPU biên dịch hoặc chọn cách khác (`OPTIMIZE FOR`, tách proc, PSP optimization của SQL Server 2022).
-- Transactional replication yêu cầu bảng publish có primary key; đề xuất "giữ heap trên primary rồi publish" phải thêm PK trước (bài 21.4).
-- Diễn giải nguyên nhân từ một wait duy nhất (ví dụ quy `PREEMPTIVE_OS_CRYPTOPS` hoàn toàn cho TLS) cần đối chiếu thêm số liệu khác (số login mỗi giây, cấu hình mã hoá).
+##### Rủi ro của đề xuất
+- Chuyển hàng loạt DB sang SIMPLE phải hỏi RPO trước: DB thanh toán, kết quả thi mất khả năng khôi phục theo thời điểm.
+- Clustered key identity bỏ page split giữa trang nhưng dồn insert vào trang cuối (`PAGELATCH_EX`) khi insert đồng thời cao; SQL Server 2019 có `OPTIMIZE_FOR_SEQUENTIAL_KEY`.
+- `OPTION (RECOMPILE)` sửa parameter sniffing nhưng biên dịch mỗi lần chạy; proc gọi hàng triệu lần mỗi ngày sẽ tốn CPU đáng kể.
+- Transactional replication đòi bảng publish có primary key.
+- Quy nguyên nhân từ một wait duy nhất (ví dụ coi `PREEMPTIVE_OS_CRYPTOPS` hoàn toàn là do TLS) cần đối chiếu số liệu khác.
 
-#### Chụp wait stats theo khoảng thời gian
-Cách lấy số liệu đáng tin hơn số tích luỹ:
-
+##### Chụp wait stats theo khoảng thời gian
 ```sql
-SELECT wait_type, waiting_tasks_count, wait_time_ms, signal_wait_time_ms
-INTO #w1 FROM sys.dm_os_wait_stats;
-
+SELECT wait_type, waiting_tasks_count, wait_time_ms INTO #w1 FROM sys.dm_os_wait_stats;
 WAITFOR DELAY '00:05:00';   -- chạy trong giờ cao điểm
-
 SELECT w2.wait_type,
        w2.wait_time_ms - w1.wait_time_ms AS wait_ms,
        w2.waiting_tasks_count - w1.waiting_tasks_count AS waits,
@@ -855,146 +738,131 @@ ORDER BY wait_ms DESC;
 
 `sp_BlitzFirst @Seconds = 300` làm việc tương tự và đã lọc wait nền.
 
-#### Trong báo cáo
-- Báo cáo gắn đề xuất với tiêu chí nghiệm thu đo được: "spill phải về 0", "reads dưới 20.000 trang/lần". Đây là điểm mạnh nên giữ khi bạn viết báo cáo của mình.
-- Các điểm phản biện ở trên lấy từ các mục: chuyển SIMPLE ở cụm có DB thanh toán (Cụm 6), heap publish qua replication (Phần VI), `PREEMPTIVE_OS_CRYPTOPS` (Cụm 2 – Mục 12), `CXCONSUMER` (Cụm 1 – Mục 9).
+#### Cách show off
+Câu chuyện mạnh nhất ở đây là tự phản biện: đọc lại báo cáo rà soát của chính mình và chỉ ra các chỗ kết luận vượt quá số liệu. Nếu việc soát lại này bạn làm trong lúc ôn phỏng vấn chứ không phải lúc nộp báo cáo, nói đúng như vậy ("khi xem lại báo cáo"). Điều này cho thấy bạn không bảo vệ con số của mình một cách mù quáng. Chọn hai ví dụ dễ hiểu là đủ, ví dụ đề xuất chuyển SIMPLE ở cụm có DB thanh toán, và đề xuất publish bảng heap qua replication.
 
-#### Cách sửa
-- Với mỗi kết luận quan trọng, ghi kèm: nguồn số liệu, khoảng thời gian, phiên bản/edition/compat, và cách kiểm chứng lại.
-- Thay số tích luỹ bằng số theo khoảng thời gian trong giờ cao điểm trước khi xếp hạng vấn đề.
+> **Ví dụ:** "Khi xem lại báo cáo, tôi soát từng kết luận bằng bốn câu hỏi: số này đo gì và trong bao lâu, đơn vị đếm là gì, đúng trong điều kiện nào, đề xuất có thể gây hại gì. Ví dụ phần lớn wait stats trong báo cáo là số cộng dồn từ lần khởi động, nên trước khi chốt thứ tự ưu tiên cần chụp lại theo khoảng vài phút trong giờ cao điểm. Một chỗ khác là đề xuất chuyển hàng loạt database sang SIMPLE cho nhẹ log; cụm đó có database thanh toán, nên tôi sửa thành quyết định theo RPO từng database. Hay đề xuất rebuild index online trong giờ hành chính: server chạy bản Standard, không có online rebuild, nên phải dời sang khung đêm. Mỗi điểm phản biện tôi đều kèm một truy vấn kiểm chứng, để cuộc trao đổi dựa trên số chứ không dựa trên ai nói to hơn."
 
-#### Kiểm chứng
-- Mỗi điểm phản biện có một truy vấn kiểm chứng: `SELECT compatibility_level FROM sys.databases`, `SELECT SERVERPROPERTY('Edition')`, `COUNT(DISTINCT plan_handle)`, wait stats theo khoảng.
+Điểm ăn điểm:
+- Phân biệt số cộng dồn với số theo khoảng thời gian, lượt chờ với thời gian chờ.
+- Biết các kết luận phụ thuộc phiên bản, edition, compatibility level, và kiểm tra trước.
+- Mỗi điểm phản biện kết thúc bằng "kiểm chứng bằng cách...".
+- Không bác bỏ cả báo cáo vì vài chỗ sai; chỉ điều chỉnh các mục có điều kiện.
 
-#### Bẫy
-- Phản biện để thắng tranh luận thay vì để ra quyết định đúng. Mỗi điểm phản biện nên kết thúc bằng "kiểm chứng bằng cách...".
-- Bác bỏ cả báo cáo vì vài chỗ sai: phần lớn đề xuất vẫn đúng; chỉ điều chỉnh các mục có điều kiện.
+#### Câu hỏi vặn
+- **"Báo cáo ghi WRITELOG hàng triệu giây, anh có kết luận ổ log chậm không?"** Chưa. Đó là số cộng dồn từ lần khởi động. Tôi chụp chênh lệch trong giờ cao điểm, tính thời gian chờ trung bình mỗi lượt, và đo độ trễ ghi file log bằng `sys.dm_io_virtual_file_stats`. Trung bình vài ms là bình thường; vài chục ms mới là ổ hoặc cấu hình có vấn đề.
+- **"Một proc có 15 dòng trong dm_exec_query_stats, có phải nó có 15 plan?"** Không chắc. View có một dòng cho mỗi câu lệnh trong mỗi plan. Đếm `DISTINCT plan_handle`; nếu thật sự nhiều plan, xem `sys.dm_exec_plan_attributes` để biết thuộc tính nào khác nhau.
+- **"Statistics bảng 100 triệu dòng chỉ tự cập nhật sau 20 triệu thay đổi, đúng không?"** Chỉ đúng với compat dưới 130 và không bật trace flag 2371. Từ compat 130 ngưỡng khoảng căn bậc hai của 1.000 × số dòng, tức khoảng 316.000 thay đổi. Tôi kiểm tra compat level của DB trước khi kết luận.
+- **"Rebuild index với ONLINE = ON trong giờ hành chính có vấn đề gì?"** `ONLINE = ON` chỉ có ở Enterprise; trên Standard phải chạy offline, khoá bảng, và không song song. Ngay cả Enterprise, online rebuild vẫn cần khoá ngắn đầu và cuối, tốn version store và log. Kiểm tra edition, chạy trong khung thấp tải.
+- **"Báo cáo đề xuất OPTION (RECOMPILE) cho proc gọi hàng triệu lần mỗi ngày, anh phản biện thế nào?"** Nó sửa parameter sniffing nhưng biên dịch lại mỗi lần chạy. Tôi ước lượng CPU biên dịch (thời gian biên dịch nhân số lần gọi) và so với lợi ích; cân nhắc `OPTIMIZE FOR`, tách proc theo nhánh, Query Store hint, hoặc PSP optimization trên SQL Server 2022.
+- **"Báo cáo là của anh, sao lại tự bắt lỗi nó?"** Vì báo cáo dùng để ra quyết định trên production. Tìm ra chỗ sai trước khi DBA làm theo rẻ hơn nhiều so với rollback sau đó. Tôi giữ nguyên các đề xuất đúng và chỉ sửa những mục có điều kiện.
 
-#### Câu hỏi phỏng vấn
-- **"Báo cáo ghi WRITELOG 3,58 triệu giây, bạn có kết luận ổ log đang chậm không?"** Chưa. Đó là số tích luỹ từ lần khởi động; tôi chụp chênh lệch trong giờ cao điểm, tính thời gian chờ trung bình mỗi lượt và đo độ trễ ghi file log bằng `sys.dm_io_virtual_file_stats`. Trung bình vài ms là bình thường; vài chục ms mới là ổ hoặc cấu hình có vấn đề.
-- **"Một proc có 15 dòng trong dm_exec_query_stats, có phải nó có 15 plan không?"** Không chắc. View có một dòng cho mỗi câu lệnh trong mỗi plan. Đếm `DISTINCT plan_handle` để biết số plan; nếu thật sự nhiều plan, xem `sys.dm_exec_plan_attributes` để biết thuộc tính nào khác nhau.
-- **"Báo cáo nói statistics bảng 100 triệu dòng chỉ tự cập nhật sau 20 triệu thay đổi, bạn phản biện thế nào?"** Ngưỡng 20% chỉ áp dụng cho compat dưới 130 không bật trace flag 2371. Từ compat 130 dùng ngưỡng động khoảng căn bậc hai của 1.000 × số dòng, tức khoảng 316.000 thay đổi. Kiểm tra compat level của DB trước khi kết luận.
-- **"Đề xuất rebuild index với ONLINE = ON trong giờ hành chính có vấn đề gì?"** `ONLINE = ON` chỉ có ở Enterprise; trên Standard lệnh lỗi hoặc phải chạy offline, khoá bảng. Ngay cả trên Enterprise, online rebuild vẫn cần khoá ngắn đầu và cuối, tốn version store và log. Kiểm tra edition, chạy trong khung thấp tải.
-- **"Bạn phản biện thế nào khi báo cáo đề xuất OPTION (RECOMPILE) cho proc gọi hàng triệu lần mỗi ngày?"** Nó sửa parameter sniffing nhưng biên dịch lại mỗi lần chạy. Tôi ước lượng CPU biên dịch (thời gian biên dịch × số lần gọi), so với lợi ích; cân nhắc `OPTIMIZE FOR`, tách proc theo nhánh, Query Store hint, hoặc PSP optimization trên SQL Server 2022.
-- **"Wait stats nào bạn lọc bỏ trước khi phân tích, và vì sao?"** Wait nền như `SLEEP_TASK`, `LAZYWRITER_SLEEP`, `XE_TIMER_EVENT`, `QDS_ASYNC_QUEUE`, `WAIT_XTP_HOST_WAIT`. Chúng tăng đều kể cả khi server rảnh, không phản ánh chờ của truy vấn người dùng; không lọc thì tỉ lệ phần trăm sai lệch.
+#### Bẫy cần tránh
+- Phản biện để thắng tranh luận thay vì để ra quyết định đúng.
+- Đọc số cộng dồn của DMV như số hiện tại.
+- Nói kiến thức theo phiên bản cũ ("bảng biến luôn ước lượng 1 dòng", "statistics cập nhật sau 20%") mà không nêu điều kiện.
 
-#### Tóm tắt
-- Bốn câu hỏi: đo cái gì và trong bao lâu; đơn vị đếm; điều kiện đúng; rủi ro và rollback.
-- Wait stats tích luỹ từ lúc khởi động; dùng chênh lệch theo khoảng trong giờ cao điểm, đã lọc wait nền.
-- Nhiều kết luận phụ thuộc phiên bản, edition, compatibility level: kiểm tra trước.
+#### Nhớ nhanh
+- Bốn câu hỏi: đo gì và trong bao lâu; đơn vị đếm; điều kiện đúng; rủi ro và rollback.
+- Wait stats: chênh lệch theo khoảng trong giờ cao điểm, đã lọc wait nền.
+- Nhiều kết luận phụ thuộc phiên bản, edition, compatibility level.
 - Mỗi điểm phản biện kết thúc bằng cách kiểm chứng.
 
 #### Bài tập
-1. Viết ba câu truy vấn kiểm tra điều kiện trước khi chấp nhận các đề xuất về statistics, `ONLINE = ON` và recovery model.
-   **Đáp án:** `SELECT name, compatibility_level, recovery_model_desc FROM sys.databases;`, `SELECT SERVERPROPERTY('Edition'), SERVERPROPERTY('ProductVersion'), SERVERPROPERTY('ProductUpdateLevel');`, và hỏi RPO của từng DB (không truy vấn được, phải hỏi nghiệp vụ).
-2. Báo cáo nói `CXCONSUMER` 460 triệu lượt là vấn đề lớn nhất của cụm. Viết lại nhận định này cho chính xác.
-   **Đáp án:** "Cụm có nhiều truy vấn chạy song song (460 triệu lượt `CXCONSUMER`, wait thường vô hại). Cần đo `CXPACKET` theo thời gian chờ trong giờ cao điểm và xác định truy vấn song song nặng nhất; nguyên nhân khả dĩ là cost threshold = 5."
-3. Chọn một đề xuất trong Phần VI và viết đầy đủ: rủi ro, cách rollback, tiêu chí nghiệm thu.
-   **Đáp án:** Ví dụ thêm index cho proc tìm feed: rủi ro là ghi chậm hơn và tốn đĩa, khoá khi tạo nếu không online; rollback bằng `DROP INDEX`; nghiệm thu là reads/lần dưới ngưỡng đặt ra và thời gian insert của bảng không tăng quá X%.
+1. Viết các truy vấn kiểm tra điều kiện trước khi chấp nhận đề xuất về statistics, `ONLINE = ON` và recovery model.
+   **Đáp án:** `SELECT name, compatibility_level, recovery_model_desc FROM sys.databases;` và `SELECT SERVERPROPERTY('Edition'), SERVERPROPERTY('ProductVersion'), SERVERPROPERTY('ProductUpdateLevel');`. RPO của từng DB không truy vấn được, phải hỏi nghiệp vụ.
+2. Báo cáo viết "CXCONSUMER hàng trăm triệu lượt là vấn đề lớn nhất của cụm". Viết lại cho chính xác.
+   **Đáp án:** "Cụm có nhiều truy vấn chạy song song (số lượt `CXCONSUMER` rất lớn, wait thường vô hại). Cần đo `CXPACKET` theo thời gian chờ trong giờ cao điểm và xác định truy vấn song song nặng nhất; nguyên nhân khả dĩ là cost threshold đang để mặc định 5."
 
 ### Bài 22.2. Sắp thứ tự ưu tiên và trình bày đề xuất tối ưu
 
-#### Mục tiêu
-- Sau bài này, bạn sắp được các đề xuất tối ưu theo thứ tự rủi ro và chi phí rollback.
-- Bạn viết được một đề xuất có đủ số đo trước, thay đổi, tiêu chí nghiệm thu và đường lui.
-- Bạn kể lại được một đợt tối ưu trong phỏng vấn đúng vai trò, có số, có đánh đổi.
+#### Kiến thức
+Một đợt rà soát cho ra hàng chục đề xuất. Làm tất cả cùng lúc thì không biết thay đổi nào có tác dụng, thay đổi nào gây lỗi. Kỹ năng ở đây là sắp thứ tự và viết đề xuất sao cho người khác triển khai được, đo được, lùi được.
 
-#### Thứ tự ưu tiên theo rủi ro
-Một báo cáo có hàng chục đề xuất; làm tất cả cùng lúc thì không biết thay đổi nào có tác dụng, thay đổi nào gây lỗi. Thứ tự hợp lý:
+##### Thứ tự ưu tiên theo rủi ro
+Ngoại lệ đứng đầu: rủi ro mất dữ liệu hoặc sập ngay (log sắp đầy, ổ còn vài phần trăm, tempdb trên ổ C) xử lý trước tiên, bất kể thuộc nhóm nào. Sau đó, theo rủi ro tăng dần:
 
-1. **Sửa proc và code** (tham số hoá, bỏ hàm trên cột, sửa kiểu dữ liệu, cache, bỏ gọi ngoài trong transaction): nhanh, phạm vi hẹp, rollback bằng deploy lại bản cũ.
-2. **Index** trong khung đêm: tác động lớn, nhưng tốn đĩa, làm chậm ghi, tạo index lớn có thể khoá bảng (nhất là trên Standard). Rollback bằng `DROP INDEX`.
+1. **Sửa proc và code** (tham số hoá, bỏ hàm trên cột, sửa kiểu dữ liệu, cache, bỏ gọi ngoài trong transaction): phạm vi hẹp, `ALTER PROCEDURE` chỉ giữ khoá schema trong chốc lát nên deploy được giữa ngày, rollback bằng bản cũ.
+2. **Index** trong khung đêm: tác động lớn, nhưng tốn đĩa, làm chậm ghi, và trên Standard thì tạo index khoá bảng, chạy một luồng. Rollback bằng `DROP INDEX`.
 3. **Cấu hình instance** (bộ nhớ, song song, tempdb, CU): ảnh hưởng toàn server, có mục cần restart.
-4. **Thay đổi kiến trúc** (tách đọc/ghi, replication, partition, outbox, hàng đợi): lợi ích dài hạn lớn nhất nhưng tốn công, nhiều thành phần mới phải vận hành.
+4. **Thay đổi kiến trúc** (tách đọc/ghi, replication, partition, outbox, hàng đợi): lợi ích dài hạn lớn nhất nhưng tốn công và thêm thành phần phải vận hành.
 
-Ngoại lệ: rủi ro mất dữ liệu hoặc sập ngay (log đầy 99,97%, ổ còn 9%, tempdb trên ổ C:) xử lý trước tiên, bất kể thuộc nhóm nào.
+Trong mỗi nhóm, xếp theo tác động trên công sức. Lấy top truy vấn theo tổng CPU hoặc tổng số trang đọc, không theo trung bình: proc nhẹ gọi hàng trăm triệu lần thường quan trọng hơn proc nặng chạy mười lần mỗi ngày.
 
-Trong mỗi nhóm, xếp theo tác động / công sức: lấy top truy vấn theo tổng CPU hoặc tổng reads (không theo trung bình), vì một proc nhẹ gọi 200 triệu lần thường quan trọng hơn một proc nặng chạy 10 lần mỗi ngày.
-
-#### Mẫu một đề xuất tốt
+##### Mẫu một đề xuất tốt
 ```text
-Vấn đề:    Proc lấy đề theo mã đề gọi 640.430 lần/ngày, đề không đổi trong ca thi.
-Số đo trước: 640.430 lần/ngày; CPU tổng X giây/ngày (Query Store, 7 ngày).
-Thay đổi:  Cache theo mã đề (L1 + Redis), warmup trước ca, xoá key khi CMS sửa đề.
-Rủi ro:    Đề sửa giữa ca không cập nhật nếu bước xoá cache lỗi.
-Đường lui: Feature flag tắt cache, đọc thẳng DB.
-Nghiệm thu: Số lần gọi proc < 5.000/ngày; p99 API lấy đề không tăng; cache hit > 99%.
+Vấn đề:      Proc lấy đề theo mã đề gọi khoảng 640.000 lần/ngày; đề không đổi trong ca thi.
+Số đo trước: Số lần gọi và CPU tổng mỗi ngày (Query Store, 7 ngày, cùng khung giờ).
+Thay đổi:    Cache theo mã đề (L1 + Redis), warmup trước ca, xoá key khi CMS sửa đề.
+Rủi ro:      Đề sửa giữa ca không được cập nhật nếu bước xoá cache lỗi.
+Đường lui:   Feature flag tắt cache, đọc thẳng DB.
+Nghiệm thu:  Số lần gọi proc giảm hơn 99%; p99 API lấy đề không tăng; cache hit trên 99%.
 ```
 
-Mỗi đề xuất có năm phần: số đo trước, thay đổi, rủi ro, đường lui, tiêu chí nghiệm thu đo được. Thiếu số đo trước thì không chứng minh được thay đổi có tác dụng.
+Năm phần bắt buộc: số đo trước, thay đổi, rủi ro, đường lui, tiêu chí nghiệm thu đo được. Thiếu số đo trước thì không chứng minh được tác dụng; thiếu đường lui thì không nên đưa lên production.
 
-#### Triển khai và đo
+##### Triển khai và đo
 - Mỗi lần một nhóm thay đổi nhỏ, có mốc thời gian, để quy được tác động.
-- So sánh cùng khung giờ, cùng ngày trong tuần (tải kỳ thi thay đổi mạnh theo ca).
-- Dùng Query Store để so plan và số liệu trước/sau theo từng truy vấn; với thay đổi cấu hình, so wait stats theo khoảng.
+- So cùng khung giờ, cùng ngày trong tuần, vì tải hệ thống thi đổi mạnh theo ca.
+- Chuẩn hoá theo số lần gọi (CPU mỗi lần, số trang đọc mỗi lần), dùng Query Store so từng truy vấn; với thay đổi cấu hình, so wait stats theo khoảng.
 
-#### Kể lại trong phỏng vấn
-Khung kể chuyện: bối cảnh (hệ thống, tải) → vấn đề có số → cách tìm nguyên nhân → quyết định và đánh đổi → kết quả có số → điều sẽ làm khác.
+##### Kể lại cho trung thực
+Khung kể: bối cảnh (hệ thống, tải) → vấn đề có số → cách tìm nguyên nhân → quyết định và đánh đổi → kết quả có số → điều sẽ làm khác. Nói đúng vai trò (dẫn rà soát, viết đề xuất, review, hay tự commit). Số đo được thì nói số đó; số ước lượng thì nói là ước lượng; đề xuất chưa triển khai thì nói "đề xuất", không nói "đã giảm".
 
-Quy tắc trung thực: nói đúng vai trò của bạn (dẫn audit, viết đề xuất, review, hay tự commit). Số nào đo được thì nói số đó; số nào là ước lượng thì nói là ước lượng. Đề xuất chưa triển khai thì nói "đề xuất", không nói "đã giảm".
+#### Cách show off
+Kế hoạch hai tầng là việc thật của bạn: sửa proc trong ngày vì `ALTER PROCEDURE` gần như không gây gián đoạn, còn index thì gom sang khung đêm làm cùng DBA, vì server chạy bản Standard nên tạo index sẽ khoá bảng. Câu chuyện có số tốt nhất là API bắt đầu thi: trace APM trước và sau cho thấy từ hơn 2 giây xuống dưới 0,1 giây. Vai trò của bạn là tìm nguyên nhân và đề xuất, đồng nghiệp commit bản sửa; con số là trace điển hình, không phải p95.
 
-#### Trong báo cáo
-- Báo cáo đặt tiêu chí nghiệm thu đo được cho từng mục ("spill phải về 0", "reads dưới 20.000 trang/lần").
-- Ví dụ các mục rủi ro cao cần làm trước: log 53,3 GB đầy 99,97% (Cụm 1 – Mục 1), tempdb 57,5 GB trên ổ C: còn 9,59% (Cụm 3 – Mục 1), ổ D: còn 9,16% (Cụm 6 – Mục 6).
-- Ví dụ đề xuất kiến trúc: tách bảng log sang replica ở cụm kho dữ liệu (Phần VI).
+> **Ví dụ:** "Đợt rà soát cho ra vài chục đề xuất, nên việc đầu tiên tôi làm là sắp thứ tự. Những thứ có thể làm sập hệ thống, như log gần đầy hay tempdb nằm trên ổ hệ điều hành sắp hết chỗ, xử lý ngay. Sau đó tôi chia hai tầng: sửa stored procedure thì deploy trong ngày vì gần như không gây gián đoạn và lùi được ngay; còn index thì gom sang khung đêm cùng DBA, vì server chạy bản Standard, tạo index sẽ khoá bảng. Mỗi đề xuất có số đo trước, rủi ro, đường lui và tiêu chí nghiệm thu. Ví dụ rõ nhất là API bắt đầu thi: tôi lần theo trace và thấy hàm làm mới cache quét toàn bộ keyspace Redis hàng trăm vòng trong một request; đồng nghiệp sửa theo hướng tôi đề xuất, và trace điển hình giảm từ hơn 2 giây xuống dưới 0,1 giây. Đó là trace trước và sau, tôi chưa đo p95 cho API này."
 
-#### Cách sửa
-- Lập bảng đề xuất có cột: nhóm (code/index/cấu hình/kiến trúc), mức rủi ro, công sức, tác động ước tính, đường lui, tiêu chí nghiệm thu, trạng thái.
-
-#### Kiểm chứng
-- Mỗi đề xuất đã triển khai có số trước/sau cùng khung giờ; đề xuất chưa đạt tiêu chí thì mở lại, không đóng.
-
-#### Bẫy
-- Bắt đầu bằng thay đổi kiến trúc vì "đẹp" trong khi các proc nóng còn chưa sửa.
-- Đo trung bình cả ngày: che mất giờ cao điểm, nơi vấn đề thật xảy ra.
-- Nhận công cho số liệu của người khác hoặc cho đề xuất chưa triển khai.
-
-#### Câu hỏi phỏng vấn
-- **"Báo cáo có 40 đề xuất, bạn làm cái nào trước?"** Trước tiên là rủi ro mất dữ liệu hoặc sập ngay (log đầy, ổ đầy). Sau đó theo thứ tự rủi ro tăng dần: sửa proc và code, index trong khung đêm, cấu hình instance, cuối cùng là thay đổi kiến trúc. Trong mỗi nhóm, xếp theo tổng CPU hoặc reads, không theo trung bình.
-- **"Vì sao xếp hạng truy vấn theo tổng chứ không theo trung bình?"** Tổng = trung bình × số lần gọi, phản ánh tải thật lên server. Proc 10 ms gọi 200 triệu lần tốn hơn proc 5 giây gọi 10 lần. Trung bình chỉ dùng khi quan tâm trải nghiệm một request cụ thể.
-- **"Một đề xuất tối ưu tốt cần những phần nào?"** Số đo trước, thay đổi cụ thể, rủi ro, đường lui, tiêu chí nghiệm thu đo được. Thiếu số đo trước thì không chứng minh được tác dụng; thiếu đường lui thì không nên triển khai lên production.
-- **"Kể một lần bạn tối ưu hệ thống, kết quả ra sao?"** Theo khung: bối cảnh và tải; vấn đề có số; cách tìm nguyên nhân (wait stats theo khoảng, Query Store); quyết định và đánh đổi; kết quả trước/sau cùng khung giờ; điều sẽ làm khác. Nói đúng vai trò và phân biệt số đo được với ước lượng.
-- **"Làm sao biết một thay đổi thật sự có tác dụng chứ không phải do tải hôm đó thấp?"** So cùng khung giờ, cùng ngày trong tuần, chuẩn hoá theo số request (CPU trên mỗi lần gọi, reads trên mỗi lần gọi). Triển khai từng nhóm nhỏ có mốc thời gian; dùng Query Store so theo từng truy vấn.
-
-#### Tóm tắt
-- Rủi ro mất dữ liệu hoặc sập ngay xử lý trước tiên.
-- Sau đó: code/proc → index → cấu hình instance → kiến trúc.
+Điểm ăn điểm:
+- Có ngoại lệ "rủi ro sập trước" trước khi nói tới thứ tự thường.
 - Xếp hạng theo tổng tài nguyên, không theo trung bình.
+- Đề xuất có đường lui và tiêu chí nghiệm thu đo được.
+- Tách bạch vai trò và loại số liệu (trace điển hình, ước lượng, hay p95 đo thật).
+
+#### Câu hỏi vặn
+- **"Báo cáo có 40 đề xuất, anh làm cái nào trước?"** Trước tiên là rủi ro mất dữ liệu hoặc sập ngay. Sau đó theo rủi ro tăng dần: sửa proc và code, index trong khung đêm, cấu hình instance, cuối cùng là kiến trúc. Trong mỗi nhóm, xếp theo tổng CPU hoặc tổng số trang đọc.
+- **"Vì sao xếp theo tổng chứ không theo trung bình?"** Tổng bằng trung bình nhân số lần gọi, phản ánh tải thật lên server. Proc 10 ms gọi hàng trăm triệu lần tốn hơn proc 5 giây gọi mười lần. Trung bình chỉ dùng khi quan tâm trải nghiệm của một request cụ thể.
+- **"Làm sao biết thay đổi có tác dụng thật, không phải do hôm đó tải thấp?"** So cùng khung giờ, cùng ngày trong tuần, chuẩn hoá theo số lần gọi. Triển khai từng nhóm nhỏ có mốc thời gian; dùng Query Store so từng truy vấn.
+- **"Sao không mua Enterprise để đánh index online cho nhanh?"** License tính theo core, chi phí rất lớn so với việc dời lịch tạo index sang khung đêm. Tôi chỉ đề xuất nâng edition khi có yêu cầu không làm được ở Standard, như readable secondary.
+- **"Trước và sau là bao nhiêu, p95 hay trung bình?"** Con số tôi có là trace điển hình trước và sau, không phải p95. Nếu cần p95, tôi lấy từ histogram độ trễ của API trong cùng khung giờ thi trước và sau bản sửa.
+- **"Phần nào trong đó là của anh?"** Tôi dẫn đợt rà soát, tìm nguyên nhân và viết đề xuất kèm cách đo; một số bản sửa do đồng nghiệp commit, phần index do DBA chạy. Tôi nói rõ để người nghe biết tôi chịu trách nhiệm phần nào.
+
+#### Bẫy cần tránh
+- Bắt đầu bằng thay đổi kiến trúc vì "đẹp" khi các proc nóng còn chưa sửa.
+- Đo trung bình cả ngày: che mất giờ cao điểm, nơi vấn đề thật xảy ra.
+- Nhận công cho số liệu của người khác hoặc cho đề xuất chưa triển khai; gọi trace điển hình là p95.
+
+#### Nhớ nhanh
+- Rủi ro mất dữ liệu hoặc sập ngay xử lý trước tiên.
+- Sau đó: code/proc → index → cấu hình instance → kiến trúc; trong nhóm xếp theo tổng tài nguyên.
 - Mỗi đề xuất có số đo trước, rủi ro, đường lui, tiêu chí nghiệm thu.
-- Khi kể lại: đúng vai trò, có số, có đánh đổi.
+- Khi kể: đúng vai trò, đúng loại số liệu, có đánh đổi.
 
 #### Bài tập
-1. Sắp xếp theo thứ tự triển khai: thêm index cho proc tìm feed; cài CU cho SQL Server 2019 RTM; backup log cho DB đầy 99,97%; cache đề theo mã đề; tách bảng log sang replica.
+1. Sắp xếp theo thứ tự triển khai: thêm index cho proc tìm feed; cài CU cho SQL Server 2019 RTM; backup log cho DB đầy gần 100%; cache đề theo mã đề; tách bảng log sang replica.
    **Đáp án:** Backup log cho DB đầy (rủi ro sập) → cache đề (code) → index proc tìm feed (khung đêm) → cài CU (khung bảo trì) → tách bảng log sang replica (kiến trúc).
-2. Viết đề xuất theo mẫu năm phần cho việc đưa lệnh ghi lịch sử ra khỏi transaction bằng outbox.
-   **Đáp án:** Số đo trước: thời gian tối đa 29.997 ms, `OLEDB` + `MSQL_DQ` 38,4% thời gian chờ; thay đổi: outbox + worker; rủi ro: lịch sử trễ, gửi trùng; đường lui: flag quay về gọi trực tiếp; nghiệm thu: thời gian tối đa của proc dưới ngưỡng, `OLEDB`/`MSQL_DQ` giảm rõ, độ trễ outbox dưới vài giây.
-3. Viết lại câu "Tôi đã giảm 90% CPU của cụm" cho trung thực khi bạn chỉ dẫn audit và đề xuất, đồng nghiệp triển khai, số đo là ước lượng.
-   **Đáp án:** "Tôi dẫn đợt audit và viết đề xuất; đồng nghiệp triển khai. Theo ước lượng từ Query Store, các thay đổi đó có thể giảm khoảng X% CPU của nhóm proc nóng; số đo sau triển khai tôi chưa có đầy đủ."
+2. Viết lại câu "Tôi đã giảm 90% CPU của cụm" cho trung thực khi bạn chỉ dẫn rà soát và đề xuất, đồng nghiệp triển khai, số đo là ước lượng.
+   **Đáp án:** "Tôi dẫn đợt rà soát và viết đề xuất; đồng nghiệp triển khai. Theo ước lượng từ Query Store, các thay đổi đó có thể giảm đáng kể CPU của nhóm proc nóng; số đo sau triển khai tôi chưa có đầy đủ."
 
 ## Chương 23. Ngoài báo cáo: tối ưu cho hệ thống lớn
-Báo cáo nội bộ tập trung vào SQL Server và cách ứng dụng gọi nó. Khi hệ thống lớn lên, các nút thắt chuyển sang chỗ khác: dòng dữ liệu bị cập nhật dồn dập, cache phân tán, hàng đợi, giới hạn tải, runtime .NET, mạng, và chi phí. Chương này không phủ toàn bộ kiến thức tối ưu, nhưng phủ các mảng chính một backend senior hay bị hỏi.
+Đợt rà soát tập trung vào SQL Server và cách ứng dụng gọi nó. Khi hệ thống lớn lên, nút thắt chuyển sang chỗ khác: một dòng dữ liệu bị cập nhật dồn dập, cache phân tán, hàng đợi, giới hạn tải, runtime .NET, mạng, và chi phí. Chương này không phủ hết kiến thức tối ưu, nhưng phủ các mảng một backend senior hay bị hỏi.
 
-Với bài toán kỳ thi (tải dồn theo ca, đỉnh ở đầu và cuối ca), thứ tự ưu tiên hợp lý:
-1. Admission control và rate limit lúc vào thi; hàng đợi cho nộp bài (bài 23.3, 23.4).
-2. Nạp sẵn cache đề và cấu hình trước ca; chống stampede (bài 23.2).
-3. Dòng nóng, bộ đếm và RCSI trên bảng ghi dồn (bài 23.1).
-4. Columnstore hoặc ClickHouse cho báo cáo, xếp hạng (bài 23.1).
-5. Load test dạng spike bằng k6 trên dữ liệu cỡ thật; theo dõi SLO p99 (bài 23.7).
+Phần lớn nội dung chương là kiến thức bạn chưa làm hết ở dự án, nên mỗi bài đều chỉ rõ phần nào bạn có trải nghiệm thật và cách nói trung thực cho phần còn lại: "ở dự án tôi chưa triển khai, nếu làm tôi sẽ thiết kế thế này". Với bài toán kỳ thi (tải dồn theo ca, đỉnh ở đầu và cuối ca), thứ tự ưu tiên hợp lý là: kiểm soát lượng người vào thi và hàng đợi cho nộp bài; nạp sẵn cache đề và chống stampede; xử lý dòng nóng; kho cột cho báo cáo; load test dạng spike trên dữ liệu cỡ thật.
 
 Sách nên đọc: *Designing Data-Intensive Applications* (Kleppmann), *Database Internals* (Petrov), *Systems Performance* (Gregg), *Release It!* (Nygard), *Site Reliability Engineering* (Google), *Pro .NET Memory Management* (Kokosa).
 
 ### Bài 23.1. Database nâng cao
 
-#### Mục tiêu
-- Sau bài này, bạn xử lý được dòng nóng, deadlock và lock escalation trong hệ thống ghi đồng thời cao.
-- Bạn giải thích được columnstore, batch mode, In-Memory OLTP và Intelligent Query Processing, biết khi nào dùng.
-- Bạn chọn được cách sinh ID, cách ghi theo lô và biết khi nào cần sharding hoặc kho dữ liệu khác.
+#### Kiến thức
+Khi tải ghi đồng thời tăng, vấn đề chuyển từ "truy vấn chậm" sang "các truy vấn chặn nhau". Bài này gom các kỹ thuật cho tình huống đó và cho phân tích trên dữ liệu lớn.
 
-#### Đồng thời và khoá
-- **RCSI và Snapshot isolation**: RCSI cho mỗi câu lệnh đọc snapshot tại lúc câu lệnh bắt đầu; Snapshot isolation (`SET TRANSACTION ISOLATION LEVEL SNAPSHOT`, cần bật `ALLOW_SNAPSHOT_ISOLATION`) cho cả transaction đọc một snapshot và báo lỗi xung đột cập nhật (lỗi 3960) nếu dòng đã bị sửa sau khi transaction bắt đầu.
-- **Deadlock**: SQL Server tự chọn một phiên làm nạn nhân (lỗi 1205). Deadlock graph có sẵn trong Extended Events session `system_health` (truy vấn bên dưới). Cách giảm: truy cập bảng theo cùng thứ tự, transaction ngắn, index phù hợp để không quét và khoá thừa, RCSI cho xung đột đọc-ghi, retry ở ứng dụng cho lỗi 1205.
-- **Lock escalation**: khi một câu lệnh giữ khoảng 5.000 khoá trên một đối tượng, SQL Server cố nâng lên khoá bảng (hoặc partition nếu `LOCK_ESCALATION = AUTO`). Tránh bằng thao tác theo lô nhỏ.
-- **Optimistic concurrency bằng `rowversion`**: đọc kèm cột `rowversion`, khi cập nhật thêm điều kiện `WHERE RowVer = @RowVer`; `@@ROWCOUNT = 0` nghĩa là có người sửa trước, báo xung đột cho người dùng. Hợp với màn hình CMS sửa cấu hình.
+##### Đồng thời và khoá
+- **Snapshot isolation** khác RCSI: RCSI cho mỗi câu lệnh một snapshot; Snapshot isolation cho cả transaction một snapshot và báo lỗi xung đột cập nhật (3960) nếu dòng đã bị sửa sau khi transaction bắt đầu.
+- **Deadlock**: SQL Server chọn một phiên làm nạn nhân (lỗi 1205). Deadlock graph có sẵn trong session `system_health`. Giảm bằng thứ tự truy cập bảng thống nhất, transaction ngắn, index đúng để không quét và khoá thừa, RCSI cho xung đột đọc-ghi, ứng dụng retry lỗi 1205.
+- **Lock escalation**: khi một câu lệnh giữ khoảng 5.000 khoá trên một đối tượng, SQL Server cố nâng lên khoá bảng. Tránh bằng thao tác theo lô nhỏ.
+- **Optimistic concurrency** bằng `rowversion`: cập nhật kèm `WHERE RowVer = @RowVer`, `@@ROWCOUNT = 0` nghĩa là có người sửa trước. Hợp cho màn hình CMS sửa cấu hình.
+- **Application lock** (`sp_getapplock`): khoá trên một tên do ứng dụng tự đặt, ví dụ theo `userId` + `eventId`, để tuần tự hoá đoạn "kiểm tra đã có chưa rồi mới chèn" mà không khoá cả bảng.
 
 ```sql
 SELECT CAST(event_data AS xml) AS deadlock
@@ -1002,164 +870,117 @@ FROM sys.fn_xe_file_target_read_file('system_health*.xel', NULL, NULL, NULL)
 WHERE object_name = 'xml_deadlock_report';
 ```
 
-#### Dòng nóng
-Dòng nóng là một dòng bị cập nhật dồn dập: bộ đếm lượt tham gia, tổng điểm sự kiện, số lượt quay còn lại của một chương trình. Mọi `UPDATE` vào cùng một dòng phải xếp hàng chờ khoá X; thông lượng bị giới hạn bởi thời gian giữ khoá (cộng thời gian ghi log khi commit).
-
-Hai cách tách:
-- **Sharded counter**: chia bộ đếm thành N dòng, mỗi lần cập nhật chọn ngẫu nhiên một dòng, khi đọc thì cộng lại.
+##### Dòng nóng
+Dòng nóng là một dòng bị cập nhật dồn dập: bộ đếm lượt tham gia, tổng điểm sự kiện, số quà còn lại. Mọi `UPDATE` vào cùng dòng phải xếp hàng chờ khoá X; thông lượng bị giới hạn bởi thời gian giữ khoá cộng thời gian ghi log khi commit. Hai cách tách:
+- **Sharded counter**: chia bộ đếm thành N dòng, mỗi lần cập nhật một dòng ngẫu nhiên, khi đọc thì cộng lại.
 
 ```sql
--- 16 slot cho mỗi bộ đếm
-UPDATE dbo.CounterSlot
-SET Value = Value + 1
+UPDATE dbo.CounterSlot SET Value = Value + 1
 WHERE CounterId = @CounterId AND Slot = ABS(CHECKSUM(NEWID())) % 16;
-
 SELECT SUM(Value) FROM dbo.CounterSlot WHERE CounterId = @CounterId;
 ```
 
-- **Gom theo lô**: ứng dụng (hoặc Redis `INCR`) cộng dồn trong bộ nhớ, mỗi vài giây ghi một lần xuống DB. Đánh đổi: mất phần chưa ghi nếu tiến trình chết; chỉ dùng cho số liệu chấp nhận sai lệch nhỏ hoặc có cơ chế đối soát.
+- **Gom theo lô**: cộng dồn trong bộ nhớ hoặc Redis `INCR`, vài giây ghi xuống DB một lần. Đánh đổi: mất phần chưa ghi nếu tiến trình chết, nên chỉ dùng cho số liệu chấp nhận sai lệch nhỏ hoặc có đối soát. Số dư, tồn kho không được sai thì dùng câu cập nhật có điều kiện (`WHERE Quantity >= @Qty`) và giữ transaction cực ngắn.
 
-Số dư, tồn kho không được sai thì không gom lô; dùng câu cập nhật có điều kiện (`WHERE Quantity >= @Qty`) và giữ transaction cực ngắn.
+##### Columnstore và batch mode
+Columnstore lưu theo cột: dữ liệu chia thành rowgroup tối đa khoảng một triệu dòng, mỗi cột nén riêng. Truy vấn tổng hợp chỉ đọc cột cần, bỏ qua segment không khớp điều kiện (segment elimination), và chạy batch mode (xử lý hàng trăm dòng một lần), thường nhanh hơn rowstore hàng chục lần trên bảng hàng trăm triệu dòng. Dữ liệu mới vào delta store trước, được nén sau; bulk insert từ 102.400 dòng trở lên vào thẳng rowgroup nén. Không dùng cho truy vấn lấy vài dòng theo khoá hay bảng cập nhật từng dòng liên tục.
 
-#### Columnstore và batch mode
-Rowstore lưu theo dòng: một trang chứa các dòng đầy đủ. Columnstore lưu theo cột: dữ liệu chia thành rowgroup (tối đa 1.048.576 dòng), mỗi cột của rowgroup là một segment được nén riêng. Lợi ích cho truy vấn tổng hợp:
-- Chỉ đọc cột cần dùng; nén theo cột thường gấp nhiều lần nén theo dòng.
-- Segment elimination: bỏ qua segment có min/max không khớp điều kiện.
-- Batch mode: toán tử xử lý theo lô hàng trăm dòng một lần thay vì từng dòng, giảm chi phí CPU mỗi dòng.
+##### In-Memory OLTP và Intelligent Query Processing
+Bảng memory-optimized nằm trong RAM, không dùng khoá và latch, có hai mức bền: `SCHEMA_AND_DATA` và `SCHEMA_ONLY` (mất khi restart, hợp cho session, staging). Đánh đổi: tốn RAM, hạn chế tính năng, vận hành phức tạp hơn.
 
-Truy vấn tổng hợp trên hàng trăm triệu dòng thường nhanh hơn rowstore hàng chục lần. Dữ liệu mới vào delta store (rowstore) trước, tuple mover nén sau; bulk insert từ 102.400 dòng trở lên vào thẳng rowgroup nén. Nonclustered columnstore trên bảng OLTP cho phép phân tích thời gian thực (operational analytics), đổi lại ghi chậm hơn. SQL Server 2019 có batch mode trên rowstore (compat 150, bản Enterprise).
+Intelligent Query Processing là nhóm tính năng optimizer tự điều chỉnh, bật theo compatibility level: 2017 có adaptive join, memory grant feedback; 2019 có batch mode trên rowstore, table variable deferred compilation, scalar UDF inlining; 2022 có Parameter Sensitive Plan optimization, DOP feedback, Query Store hints. Nâng compat level có rủi ro hồi quy plan: bật Query Store trước, nâng, so sánh, force plan cũ cho truy vấn bị hồi quy.
 
-Không dùng columnstore cho truy vấn lấy vài dòng theo khoá hay bảng cập nhật từng dòng liên tục.
-
-#### In-Memory OLTP
-Bảng memory-optimized nằm hoàn toàn trong RAM, không dùng khoá và latch (đồng thời lạc quan nhiều phiên bản), index là hash hoặc range trong bộ nhớ. Hai mức bền: `SCHEMA_AND_DATA` (ghi log, khôi phục được) và `SCHEMA_ONLY` (mất dữ liệu khi restart, hợp cho session, bảng staging). Memory-optimized table type thay cho bảng biến, `#temp` trong proc gọi rất nhiều. Memory-optimized tempdb metadata (SQL Server 2019, cần restart) giảm tranh chấp bảng hệ thống của tempdb. Đánh đổi: tốn RAM, hạn chế tính năng, vận hành phức tạp hơn.
-
-#### Partitioning sâu
-Partition elimination chỉ xảy ra khi điều kiện lọc trên cột partition khớp kiểu và không bị bọc hàm. Index aligned (cùng partition scheme) là điều kiện để `SWITCH` và rebuild từng partition. Sliding window (bài 20.3) là quy trình chuẩn cho bảng log theo thời gian.
-
-#### Intelligent Query Processing
-Nhóm tính năng optimizer tự điều chỉnh, bật theo compatibility level:
-- SQL Server 2017 (compat 140): adaptive join, memory grant feedback (batch mode), interleaved execution cho multi-statement TVF.
-- SQL Server 2019 (compat 150): memory grant feedback cho row mode, batch mode trên rowstore, table variable deferred compilation, scalar UDF inlining, `APPROX_COUNT_DISTINCT`.
-- SQL Server 2022 (compat 160): Parameter Sensitive Plan optimization (nhiều plan cho một truy vấn theo giá trị tham số), memory grant feedback theo percentile và lưu bền qua Query Store, DOP feedback (bật bằng database scoped configuration), CE feedback, Query Store hints (gắn hint mà không sửa code).
-
-Nâng compat level là thay đổi có rủi ro hồi quy plan: bật Query Store trước, nâng compat, so sánh, force plan cũ cho truy vấn bị hồi quy.
-
-#### Ghi theo lô
-Một lần gọi cho mỗi dòng tốn round-trip và một commit (một lần chờ `WRITELOG`) mỗi dòng. Các cách gom:
-- **TVP** (table-valued parameter): truyền nhiều dòng vào proc trong một lần gọi.
-- **`SqlBulkCopy`**: nạp hàng nghìn tới hàng triệu dòng; với `TABLOCK` vào heap hoặc bảng rỗng, ở SIMPLE/BULK_LOGGED được minimal logging.
+##### Ghi theo lô và sinh ID
+Mỗi dòng một lần gọi là một round-trip và một lần chờ `WRITELOG`. Gom bằng **TVP** (truyền nhiều dòng vào proc trong một lần gọi) hoặc **`SqlBulkCopy`** cho hàng nghìn tới hàng triệu dòng.
 
 ```csharp
-var table = new DataTable();
-table.Columns.Add("UserId", typeof(long));
-table.Columns.Add("QuestionId", typeof(int));
-table.Columns.Add("Answer", typeof(string));
-// ... thêm dòng
-using var cmd = new SqlCommand("dbo.usp_SaveAnswers", conn) { CommandType = CommandType.StoredProcedure };
 cmd.Parameters.Add(new SqlParameter("@Answers", SqlDbType.Structured)
 {
-    TypeName = "dbo.AnswerTableType",
-    Value = table
+    TypeName = "dbo.AnswerTableType",   // user-defined table type
+    Value = answersDataTable
 });
-await cmd.ExecuteNonQueryAsync(ct);
 ```
 
-#### Sinh ID
-GUID ngẫu nhiên (`NEWID()`, `Guid.NewGuid()`) làm clustered key gây chèn vào giữa index, page split, phân mảnh, và trang của index không nằm gọn trong buffer pool. Thay thế:
-- `NEWSEQUENTIALID()` (chỉ dùng làm default của cột) hoặc identity/sequence.
-- Snowflake ID: số 64 bit gồm 41 bit thời gian (ms), 10 bit mã máy, 12 bit số thứ tự (4.096 ID mỗi ms mỗi máy); tăng theo thời gian, sinh ở ứng dụng, không cần DB.
-- UUID v7 (`Guid.CreateVersion7()` từ .NET 9): tăng theo thời gian theo thứ tự byte chuẩn. Cẩn thận: SQL Server so sánh `uniqueidentifier` theo thứ tự byte riêng (nhóm byte cuối được so trước), nên UUID v7 lưu vào cột `uniqueidentifier` không tăng dần theo cách SQL Server sắp xếp.
+GUID ngẫu nhiên làm clustered key gây chèn vào giữa index, page split, phân mảnh. Thay bằng identity/sequence, `NEWSEQUENTIALID()`, hoặc Snowflake ID sinh ở ứng dụng (thời gian + mã máy + số thứ tự). UUID v7 (`Guid.CreateVersion7()` từ .NET 9) tăng theo thời gian theo thứ tự byte chuẩn, nhưng SQL Server so `uniqueidentifier` theo thứ tự byte riêng (nhóm byte cuối so trước), nên lưu vào cột `uniqueidentifier` không tăng dần theo cách SQL Server sắp xếp.
 
-#### HA/DR, sharding và đúng kho
-- **Always On AG**: failover tự động trong cụm; ứng dụng phải retry khi kết nối bị cắt lúc failover (vài giây tới vài chục giây), dùng listener và `MultiSubnetFailover=True`. Read scale-out đưa truy vấn đọc sang secondary (bài 21.4).
-- **Sharding**: chia dữ liệu ra nhiều DB theo shard key. Chọn key sao cho truy vấn chính chỉ chạm một shard và tải chia đều (ví dụ `UserId` băm). Khó: truy vấn chéo shard, transaction chéo shard, chia lại shard khi thêm node. Distributed SQL (CockroachDB, YugabyteDB, TiDB, Citus cho PostgreSQL) làm sẵn phần chia và chia lại, đổi lại độ trễ ghi cao hơn do đồng thuận giữa các node.
-- **Đúng việc đúng kho**: Elasticsearch/OpenSearch cho tìm kiếm toàn văn (thay `LIKE '%x%'` luôn quét); ClickHouse cho phân tích cột trên dữ liệu rất lớn; time-series DB cho metric; object storage cho file, ảnh, bài làm dạng file.
-- **CQRS và read model**: tách mô hình ghi và mô hình đọc; read model được cập nhật từ sự kiện, thiết kế đúng hình dạng màn hình cần. Indexed view là dạng read model ngay trong SQL Server: kết quả tổng hợp được lưu và tự cập nhật, đổi lại mỗi lần ghi vào bảng gốc tốn thêm chi phí.
+##### Khi nào cần kho khác
+Sharding chia dữ liệu ra nhiều DB theo shard key; khó ở truy vấn và transaction chéo shard, chia lại khi thêm node. Đúng việc đúng kho: Elasticsearch cho tìm kiếm toàn văn, ClickHouse cho phân tích cột rất lớn, object storage cho file. Indexed view là một dạng read model ngay trong SQL Server: kết quả tổng hợp được lưu sẵn, đổi lại mỗi lần ghi bảng gốc tốn thêm.
 
-#### Kiểm chứng
-- Dòng nóng: wait `LCK_M_X`/`LCK_M_U` trên đúng dòng giảm, thông lượng cập nhật tăng (đo bằng load test).
-- Columnstore: `SET STATISTICS IO, TIME ON` so reads và CPU trước/sau; plan có toán tử chạy batch mode (`Actual Execution Mode = Batch`).
-- Deadlock: số `xml_deadlock_report` mỗi ngày trong `system_health` giảm.
+#### Cách show off
+Trải nghiệm thật bạn có ở đây là application lock: trong một sự kiện, bạn dùng `sp_getapplock` để đảm bảo mỗi người chỉ được chèn kết quả một lần dù request tới đồng thời. Nếu không có số đo bản ghi trùng trước và sau, đừng đưa ra con số; kể cơ chế là đủ. Các phần còn lại (sharded counter, columnstore) nói theo hướng thiết kế. Phía báo cáo, kho dữ liệu hiện chạy job SQL Agent mỗi giờ; columnstore là bước nên thử trước khi nghĩ tới kho khác.
 
-#### Bẫy
-- Gom cập nhật theo lô cho dữ liệu tiền, tồn kho: tiến trình chết là mất cập nhật.
-- Columnstore trên bảng cập nhật từng dòng liên tục: delta store và dòng bị đánh dấu xoá tích tụ, cần reorganize thường xuyên.
-- Sharding quá sớm: chi phí vận hành và truy vấn chéo shard lớn hơn nhiều so với scale dọc, tách đọc, cache.
+> **Ví dụ:** "Trong một sự kiện, mỗi người chơi chỉ được ghi kết quả một lần, nhưng client có thể gửi hai request gần như cùng lúc, và kiểu kiểm tra 'đã có kết quả chưa rồi mới chèn' có thể lọt khi hai request chạy song song. Tôi dùng application lock theo người chơi và sự kiện, giữ trong transaction rất ngắn, nên hai request cùng người bị tuần tự hoá còn người khác không ảnh hưởng nhau. Với bộ đếm tổng của cả sự kiện, nếu số lượt cập nhật lên tới hàng nghìn mỗi giây thì một dòng sẽ thành điểm nghẽn; khi đó tôi sẽ tách thành nhiều dòng rồi cộng khi đọc, hoặc đếm trên Redis rồi ghi xuống theo lô nếu chấp nhận lệch nhỏ. Còn số dư hay số quà thì không gom lô, chỉ dùng câu cập nhật có điều kiện. Phần tách bộ đếm tôi chưa phải làm ở dự án, vì tải chưa tới mức đó."
 
-#### Câu hỏi phỏng vấn
-- **"Bộ đếm lượt tham gia sự kiện bị cập nhật hàng nghìn lần mỗi giây và gây blocking, bạn xử lý thế nào?"** Đó là dòng nóng. Tách thành sharded counter (N dòng, cập nhật ngẫu nhiên một dòng, đọc thì cộng), hoặc đếm trên Redis `INCR` rồi ghi xuống DB theo lô vài giây một lần nếu chấp nhận sai lệch nhỏ. Số dư không được sai thì giữ cập nhật có điều kiện và transaction cực ngắn.
-- **"Khi nào dùng columnstore index?"** Truy vấn tổng hợp, quét nhiều dòng ít cột trên bảng lớn: báo cáo, thống kê, xếp hạng. Nhờ nén theo cột, segment elimination và batch mode, thường nhanh hơn rowstore hàng chục lần. Không hợp cho lấy vài dòng theo khoá hay cập nhật từng dòng liên tục.
-- **"GUID làm clustered key có vấn đề gì và thay bằng gì?"** GUID ngẫu nhiên chèn vào giữa index gây page split, phân mảnh, buffer pool kém hiệu quả. Dùng identity/sequence, `NEWSEQUENTIALID()`, hoặc Snowflake ID sinh ở ứng dụng; nếu dùng UUID v7 thì lưu ý thứ tự so sánh `uniqueidentifier` của SQL Server khác thứ tự byte chuẩn.
-- **"Bạn tìm nguyên nhân deadlock thế nào?"** Lấy deadlock graph từ session `system_health` (event `xml_deadlock_report`), xem hai phiên giữ và chờ khoá gì trên đối tượng nào, câu lệnh nào. Sửa bằng thứ tự truy cập thống nhất, index để giảm phạm vi khoá, transaction ngắn, RCSI cho xung đột đọc-ghi; ứng dụng retry lỗi 1205.
-- **"Nâng compatibility level để được Intelligent Query Processing có rủi ro gì?"** Đổi cardinality estimator và hành vi optimizer, có thể làm một số plan tệ đi. Bật Query Store trước, ghi baseline, nâng compat, so sánh truy vấn hồi quy và force plan cũ hoặc dùng Query Store hint cho chúng.
+Điểm ăn điểm:
+- Phân biệt dữ liệu chấp nhận lệch (bộ đếm hiển thị) với dữ liệu không được sai (số dư, tồn kho).
+- Nói được columnstore hợp và không hợp với kiểu truy vấn nào.
+- Nâng compat level có Query Store làm lưới an toàn.
+- Chỉ ra cái bẫy UUID v7 với thứ tự sắp xếp của SQL Server.
 
-#### Tóm tắt
+#### Câu hỏi vặn
+- **"Bộ đếm lượt tham gia bị cập nhật hàng nghìn lần mỗi giây và gây blocking, anh xử lý thế nào?"** Đó là dòng nóng. Tách thành sharded counter (N dòng, cập nhật ngẫu nhiên một dòng, đọc thì cộng), hoặc đếm trên Redis `INCR` rồi ghi xuống DB theo lô nếu chấp nhận sai lệch nhỏ. Số dư không được sai thì giữ cập nhật có điều kiện và transaction cực ngắn.
+- **"Sao dùng applock mà không dùng unique constraint?"** Nếu nghiệp vụ biểu diễn được bằng một khoá duy nhất thì unique constraint là lựa chọn đầu tiên, rẻ và chắc. Applock dùng khi điều kiện phức tạp hơn một khoá, ví dụ phải đọc vài bảng để quyết định có được chèn không. Nếu bị hỏi tiếp: applock phải nằm trong transaction ngắn, owner là transaction để tự nhả khi commit hoặc rollback.
+- **"Khi nào dùng columnstore?"** Truy vấn tổng hợp quét nhiều dòng ít cột trên bảng lớn: báo cáo, thống kê, xếp hạng. Không hợp cho lấy vài dòng theo khoá hay cập nhật từng dòng liên tục, vì delta store và dòng bị đánh dấu xoá sẽ tích tụ.
+- **"GUID làm clustered key có vấn đề gì?"** GUID ngẫu nhiên chèn vào giữa index gây page split, phân mảnh, buffer pool kém hiệu quả. Dùng identity/sequence, `NEWSEQUENTIALID()`, hoặc Snowflake ID; nếu dùng UUID v7 thì lưu ý thứ tự so sánh `uniqueidentifier` của SQL Server khác thứ tự byte chuẩn.
+- **"Anh tìm nguyên nhân deadlock thế nào?"** Lấy deadlock graph từ `system_health`, xem hai phiên giữ và chờ khoá gì, trên đối tượng nào, câu lệnh nào. Sửa bằng thứ tự truy cập thống nhất, index để thu hẹp phạm vi khoá, transaction ngắn, RCSI cho xung đột đọc-ghi; ứng dụng retry lỗi 1205.
+- **"Nâng compatibility level để có IQP có rủi ro gì?"** Đổi cardinality estimator và hành vi optimizer, một số plan có thể tệ đi. Bật Query Store trước, ghi baseline, nâng compat, so truy vấn hồi quy và force plan cũ hoặc dùng Query Store hint.
+
+#### Bẫy cần tránh
+- Gom cập nhật theo lô cho tiền hay tồn kho: tiến trình chết là mất cập nhật.
+- Nói "columnstore nhanh hơn" mà không nói nhanh cho loại truy vấn nào.
+- Kể sharded counter như đã làm khi thực tế chưa gặp tải tới mức đó.
+
+#### Nhớ nhanh
 - Dòng nóng: sharded counter hoặc gom lô; số dư thì cập nhật có điều kiện.
-- Deadlock graph có sẵn trong `system_health`; ứng dụng retry lỗi 1205.
-- Columnstore + batch mode cho tổng hợp; In-Memory OLTP cho dữ liệu nóng nhỏ.
-- IQP theo compat level; nâng compat có Query Store làm lưới an toàn.
+- Applock tuần tự hoá theo khoá nghiệp vụ; unique constraint vẫn là lựa chọn đầu tiên nếu dùng được.
+- Columnstore + batch mode cho tổng hợp; IQP theo compat level, nâng compat có Query Store.
 - Ghi theo lô bằng TVP/`SqlBulkCopy`; ID tăng dần thay GUID ngẫu nhiên.
 
 #### Bài tập
 1. Thiết kế bảng sharded counter cho bộ đếm lượt tham gia, kèm câu cập nhật và câu đọc.
    **Đáp án:** `CounterSlot(CounterId int, Slot tinyint, Value bigint, PRIMARY KEY (CounterId, Slot))`, khởi tạo 16 dòng mỗi bộ đếm; cập nhật `Slot = ABS(CHECKSUM(NEWID())) % 16`; đọc `SUM(Value)`.
 2. Bảng log đáp án 500 triệu dòng, báo cáo đếm số câu đúng theo môn, theo ngày chạy 3 phút. Đề xuất cách tăng tốc và đánh đổi.
-   **Đáp án:** Thêm nonclustered columnstore (hoặc bảng tổng hợp/columnstore ở replica báo cáo); đánh đổi là ghi chậm hơn và tốn bộ nhớ tuple mover. Tốt hơn: làm ở replica để primary giữ insert nhanh.
-3. Viết câu `UPDATE` dùng `rowversion` cho màn hình CMS sửa cấu hình ca thi và cách xử lý khi xung đột.
-   **Đáp án:** `UPDATE dbo.ShiftConfig SET ... WHERE ShiftId = @Id AND RowVer = @RowVer; IF @@ROWCOUNT = 0 THROW 50010, N'Cấu hình đã bị người khác sửa', 1;`. Ứng dụng tải lại dữ liệu mới và cho người dùng sửa lại.
+   **Đáp án:** Columnstore ở replica báo cáo (hoặc nonclustered columnstore trên bảng gốc); đánh đổi là ghi chậm hơn và tốn tài nguyên nén. Làm ở replica để primary giữ insert nhanh.
 
 ### Bài 23.2. Cache nâng cao
 
-#### Mục tiêu
-- Sau bài này, bạn thiết kế được cache hai tầng L1/L2 và dùng được `HybridCache`.
-- Bạn chống được stampede bằng nhiều kỹ thuật, xử lý được hot key và big key.
-- Bạn nắm các điểm vận hành Redis quan trọng và cache ở tầng HTTP.
+#### Kiến thức
+Bài cache ở chương 21 dừng ở cache-aside một lớp. Ở quy mô lớn, các câu hỏi chuyển sang: hai tầng cache phối hợp thế nào, key nóng làm gì, xoá cache hàng loạt ra sao mà không chặn Redis.
 
-#### Cache hai tầng
-L1 là cache trong process (nanosecond, không qua mạng), L2 là Redis dùng chung. Đọc L1 → trượt thì đọc L2 → trượt thì đọc DB, ghi ngược lên L2 rồi L1. L1 có TTL ngắn hơn L2 để giới hạn độ lệch giữa các instance. Khi dữ liệu đổi: xoá L2 và phát thông báo (Redis Pub/Sub) để mọi instance xoá L1.
+##### Cache hai tầng
+L1 trong process (không qua mạng), L2 là Redis dùng chung. Đọc L1, trượt thì L2, trượt nữa thì DB, rồi ghi ngược lên L2 và L1. L1 có TTL ngắn hơn L2 để giới hạn độ lệch giữa các instance. Khi dữ liệu đổi: xoá L2 và phát Redis Pub/Sub để mọi instance xoá L1.
 
-`HybridCache` (gói `Microsoft.Extensions.Caching.Hybrid`, ra cùng .NET 9) làm sẵn hai tầng, chống stampede trong một instance (một lần nạp cho mỗi key, các lời gọi đồng thời chờ chung) và hỗ trợ xoá theo tag:
+`HybridCache` (gói `Microsoft.Extensions.Caching.Hybrid`, ra mắt cùng thời .NET 9) làm sẵn hai tầng, chống stampede trong một instance và xoá theo tag:
 
 ```csharp
-builder.Services.AddHybridCache(o =>
+builder.Services.AddHybridCache(o => o.DefaultEntryOptions = new HybridCacheEntryOptions
 {
-    o.DefaultEntryOptions = new HybridCacheEntryOptions
-    {
-        Expiration = TimeSpan.FromMinutes(30),        // L2
-        LocalCacheExpiration = TimeSpan.FromSeconds(30) // L1
-    };
+    Expiration = TimeSpan.FromMinutes(30),          // L2
+    LocalCacheExpiration = TimeSpan.FromSeconds(30) // L1
 });
 
-var paper = await _cache.GetOrCreateAsync(
-    $"exam:paper:{paperId}",
+var paper = await _cache.GetOrCreateAsync($"exam:paper:{paperId}",
     async ct => await _repo.GetPaperAsync(paperId, ct),
-    tags: new[] { $"exam:{examId}" },
-    cancellationToken: ct);
+    tags: new[] { $"exam:{examId}" }, cancellationToken: ct);
 
 await _cache.RemoveByTagAsync($"exam:{examId}");   // khi CMS sửa đề
 ```
 
-#### Chống stampede: ba kỹ thuật
-- **Request coalescing**: gộp các yêu cầu trùng key thành một lần nạp. Trong process: `HybridCache` hoặc `Lazy<Task<T>>` trong `ConcurrentDictionary`. Giữa nhiều instance: khoá Redis `SET lock:key token NX PX 5000`, instance không lấy được khoá thì chờ ngắn rồi đọc lại cache.
-- **Hết hạn sớm theo xác suất (XFetch)**: mỗi lần đọc, nạp lại sớm với xác suất tăng dần khi gần hết hạn. Điều kiện: `now - delta * beta * ln(rand()) >= expiry`, với `delta` là thời gian nạp, `beta` thường là 1. Key nóng gần như luôn được một request làm mới trước khi hết hạn, không có thời điểm tất cả cùng trượt.
-- **Stale-while-revalidate**: lưu kèm "hạn mềm" và "hạn cứng"; quá hạn mềm thì trả bản cũ ngay và kích hoạt nạp nền; chỉ quá hạn cứng mới chờ DB.
+##### Chống stampede nâng cao
+- **Request coalescing**: gộp yêu cầu trùng key thành một lần nạp. Giữa nhiều instance dùng khoá Redis `SET lock:key token NX PX 5000`.
+- **Hết hạn sớm theo xác suất (XFetch)**: mỗi lần đọc, nạp lại sớm với xác suất tăng dần khi gần hết hạn, điều kiện `now - delta * beta * ln(rand()) >= expiry` (delta là thời gian nạp, beta thường là 1). Key nóng gần như luôn được một request làm mới trước khi hết hạn.
+- **Stale-while-revalidate**: lưu "hạn mềm" và "hạn cứng"; quá hạn mềm thì trả bản cũ và nạp nền.
 
-#### Hot key và big key
-- **Hot key**: một key nhận phần lớn lượt đọc (cấu hình sự kiện đang chạy). Trong Redis Cluster, mọi lượt đọc key đó dồn vào một node. Cách xử lý: L1 trong process (gần như hết tải lên Redis), nhân bản key (`config:event:{n}` với n = 0..7, đọc ngẫu nhiên một bản), đọc từ replica.
-- **Big key**: value lớn (chuỗi hàng MB, hash/list hàng trăm nghìn phần tử). Redis thực thi lệnh trên một luồng chính: đọc, ghi hay xoá một big key chặn mọi lệnh khác trong lúc đó, tốn băng thông mạng, và làm phân phối bộ nhớ giữa các node lệch. Xử lý: chia nhỏ (đề thi theo từng phần), nén, chỉ cache phần cần; xoá bằng `UNLINK` (giải phóng bộ nhớ nền) thay cho `DEL`. Tìm bằng `redis-cli --bigkeys` hoặc `MEMORY USAGE key`.
+##### Hot key, big key và xoá hàng loạt
+- **Hot key**: một key nhận phần lớn lượt đọc (cấu hình sự kiện đang chạy); trong Redis Cluster mọi lượt đọc dồn vào một node. Xử lý: L1 trong process, nhân bản key (`config:event:{n}`, đọc ngẫu nhiên một bản), đọc từ replica.
+- **Big key**: value hàng MB hoặc collection hàng trăm nghìn phần tử. Redis thực thi lệnh trên một luồng chính, nên thao tác với big key chặn mọi lệnh khác. Chia nhỏ, nén, chỉ cache phần cần; xoá bằng `UNLINK` thay cho `DEL`.
+- **Xoá theo pattern**: `KEYS` quét toàn bộ và chặn server. `SCAN` không chặn lâu từng lệnh, nhưng duyệt hết keyspace trên đường xử lý request là hàng trăm round-trip. Cách đúng là đừng phải tìm key: giữ một Redis SET làm chỉ mục các key thuộc một nhóm rồi xoá đúng các key đó, hoặc dùng key có version (`exam:paper:{id}:v{n}`), tăng version thì key cũ tự hết hạn.
 
-#### Invalidation
-- Theo sự kiện từ chính ứng dụng sau commit (bài 21.1).
-- Theo CDC hoặc outbox: thay đổi trong DB sinh sự kiện, consumer xoá cache. Bắt được cả thay đổi do job hay do sửa tay trong DB.
-- Key có version: `exam:paper:{id}:v{version}`; khi dữ liệu đổi thì tăng version (lưu ở nơi rẻ để đọc), key cũ tự hết hạn. Tránh race giữa xoá và nạp lại.
-
-#### Vận hành Redis
-- **Pipeline**: gửi nhiều lệnh không chờ từng phản hồi, giảm round-trip. StackExchange.Redis tự multiplex nhiều lệnh async trên một kết nối; dùng một `ConnectionMultiplexer` singleton.
-- **Lua script** (`EVAL`): chạy nguyên tử nhiều lệnh trên server, ví dụ "kiểm tra còn lượt rồi trừ".
+##### Vận hành Redis
+- Một `ConnectionMultiplexer` singleton; StackExchange.Redis tự pipeline các lệnh async.
+- **Lua script** chạy nguyên tử nhiều lệnh trên server, ví dụ "còn lượt thì trừ":
 
 ```lua
--- KEYS[1] = số lượt còn lại; ARGV[1] = số lượt cần trừ
 local left = tonumber(redis.call('GET', KEYS[1]) or '0')
 if left >= tonumber(ARGV[1]) then
   return redis.call('DECRBY', KEYS[1], ARGV[1])
@@ -1167,159 +988,143 @@ end
 return -1
 ```
 
-- **Cluster**: 16.384 hash slot chia cho các node; các key trong một lệnh nhiều key phải cùng slot, ép bằng hash tag `{user:123}:a`, `{user:123}:b`.
-- **Eviction policy**: mặc định `noeviction` (đầy bộ nhớ thì lệnh ghi lỗi). Cache thuần thường dùng `allkeys-lru` hoặc `allkeys-lfu`; nếu Redis vừa làm cache vừa lưu dữ liệu không được mất thì tách instance.
-- **Persistence**: RDB (snapshot định kỳ, fork tiến trình tốn bộ nhớ copy-on-write) và AOF (ghi log lệnh, `appendfsync everysec` có thể mất khoảng 1 giây dữ liệu). Cache thuần có thể tắt persistence để giảm độ trễ, đổi lại khởi động lại là cache lạnh.
-- Không dùng `KEYS *` trên production (quét toàn bộ, chặn server); dùng `SCAN` theo con trỏ.
+- **Cluster**: 16.384 hash slot; key trong một lệnh nhiều key phải cùng slot, ép bằng hash tag `{user:123}:a`.
+- **Eviction**: mặc định `noeviction` (đầy thì lệnh ghi lỗi). Cache thuần dùng `allkeys-lru` hoặc `allkeys-lfu`; dữ liệu không được mất thì tách instance.
+- **Persistence**: RDB (snapshot định kỳ) và AOF (`appendfsync everysec` có thể mất khoảng 1 giây). Cache thuần có thể tắt, chấp nhận cache lạnh khi khởi động lại.
 
-#### Cache ở tầng HTTP và CDN
-- `Cache-Control: public, max-age=60, s-maxage=300, stale-while-revalidate=30`: trình duyệt giữ 60 giây, CDN giữ 300 giây, quá hạn vẫn trả bản cũ trong 30 giây khi làm mới.
-- ETag + `If-None-Match`: server trả 304 Not Modified không kèm body nếu dữ liệu chưa đổi; tiết kiệm băng thông, vẫn tốn một request.
-- ASP.NET Core Output Caching (`AddOutputCache`, từ .NET 7): cache response ở server, có tag để xoá, có chống stampede. Dữ liệu cá nhân hoá không cache ở CDN, hoặc phải vary theo khoá phù hợp.
+##### Cache ở tầng HTTP
+`Cache-Control: public, max-age=60, s-maxage=300, stale-while-revalidate=30`; ETag + `If-None-Match` trả 304 không kèm body; ASP.NET Core Output Caching (từ .NET 7) cache response ở server, có tag và chống stampede. Dữ liệu cá nhân hoá không cache ở CDN.
 
-#### Kiểm chứng
-- Tỉ lệ hit L1, L2 riêng; số lần nạp từ DB mỗi key mỗi giờ (phải gần 1 lần mỗi TTL mỗi instance).
-- Redis: `INFO stats` (`keyspace_hits`, `keyspace_misses`, `evicted_keys`), `SLOWLOG GET` để thấy lệnh chậm, độ trễ p99 của lệnh phía client.
-- Load test bằng cách xoá key nóng giữa lúc tải cao: DB không được tăng vọt.
+#### Cách show off
+Câu chuyện thật mạnh nhất của bạn nằm ở đây: API bắt đầu thi chậm vì hàm làm mới cache dùng `SCAN` duyệt toàn bộ keyspace Redis hàng trăm vòng trong một request. Bạn tìm ra qua trace APM và đề xuất dùng một Redis SET làm chỉ mục key; đồng nghiệp commit bản sửa. Ngoài ra, bạn dùng một lớp Lua kiểm tra-rồi-ghi có sẵn trong hệ thống; nói "tôi hiểu và dùng lớp đó", không nói là tự viết.
 
-#### Bẫy
-- Xoá cache bằng `KEYS pattern` rồi `DEL` trên production: chặn Redis. Dùng tag, version, hoặc `SCAN` theo lô.
-- L1 TTL dài trên nhiều instance mà không có Pub/Sub: mỗi instance thấy một phiên bản dữ liệu khác nhau.
-- Await ghi cache trong đường xử lý request: Redis chậm kéo theo API chậm. Ghi cache chạy nền, có bắt lỗi và log.
+> **Ví dụ:** "API bắt đầu thi có trace điển hình hơn 2 giây, và gần như toàn bộ thời gian nằm ở các span Redis. Lần vào code thì thấy hàm làm mới cache phải xoá mọi key của một nhóm, và nó tìm các key đó bằng `SCAN` trên toàn keyspace, mấy trăm vòng trong một request. `SCAN` không chặn Redis như `KEYS`, nhưng vấn đề là thuật toán tỉ lệ với kích thước cả keyspace lại nằm trên đường nóng. Tôi đề xuất giữ một Redis SET liệt kê các key của nhóm, khi cần thì đọc SET đó rồi xoá đúng từng key. Đồng nghiệp sửa theo hướng đó, và trace điển hình sau khi deploy còn dưới 0,1 giây. Bài học tôi rút ra là thiết kế cache phải tính luôn cách xoá, chứ không chỉ cách đọc."
 
-#### Câu hỏi phỏng vấn
-- **"Thiết kế cache cho cấu hình sự kiện được đọc 50.000 lần mỗi giây trên 20 instance thế nào?"** L1 trong process TTL vài giây tới vài chục giây trước L2 Redis; hot key gần như không chạm Redis. Khi admin sửa: xoá L2 và phát Pub/Sub để instance xoá L1. Warmup trước sự kiện, coalescing để mỗi instance chỉ nạp một lần.
-- **"XFetch khác single-flight thế nào?"** Single-flight gộp request khi đã trượt: vẫn có một request phải chờ DB. XFetch làm mới sớm theo xác suất trước khi hết hạn, nên key nóng hầu như không bao giờ trượt. Thường dùng cùng nhau.
-- **"Big key trong Redis gây hại gì?"** Redis thực thi lệnh trên một luồng chính, thao tác với big key chặn mọi lệnh khác; tốn băng thông; lệch bộ nhớ giữa các node cluster; xoá bằng `DEL` cũng chặn. Chia nhỏ, nén, xoá bằng `UNLINK`.
-- **"Redis dùng làm cache nên chọn eviction policy và persistence thế nào?"** Cache thuần: `allkeys-lru` hoặc `allkeys-lfu`, đặt `maxmemory`; persistence có thể tắt hoặc chỉ RDB thưa, chấp nhận cache lạnh khi khởi động lại (cần warmup). Dữ liệu không được mất thì tách sang instance khác với `noeviction` và AOF.
-- **"Khi nào dùng ETag, khi nào dùng max-age?"** `max-age` để client/CDN không gọi lại trong khoảng thời gian, hợp với dữ liệu đổi theo chu kỳ biết trước. ETag khi cần luôn kiểm tra tươi mới nhưng muốn tránh tải lại body; vẫn tốn một round-trip. Có thể kết hợp.
+Điểm ăn điểm:
+- Giải thích vì sao `SCAN` vẫn chậm: số round-trip và độ phức tạp theo kích thước keyspace.
+- Nói được ba cách xoá hàng loạt không cần quét: SET chỉ mục, version key, tag.
+- Hot key xử lý bằng L1 trước, không nhảy ngay sang nhân bản key.
+- Nói đúng vai trò và loại số liệu (trace điển hình, không phải p95).
 
-#### Tóm tắt
-- L1 + L2 với TTL L1 ngắn hơn; xoá L1 qua Pub/Sub; `HybridCache` làm sẵn phần lớn.
+#### Câu hỏi vặn
+- **"SCAN không chặn như KEYS, sao vẫn chậm?"** Mỗi lệnh `SCAN` chỉ duyệt một phần nên không chặn lâu, nhưng vài trăm round-trip trong một request cộng lại thành hàng trăm mili-giây tới giây, và mỗi lệnh vẫn chiếm luồng chính của Redis. Gốc là thuật toán tỉ lệ với cả keyspace nằm trên đường nóng.
+- **"Sao chắc nguyên nhân là SCAN?"** Trong trace APM, span Redis chiếm phần lớn thời gian của request; sau bản sửa, trace không còn chuỗi `SCAN` và thời gian giảm tương ứng. Nếu bị hỏi tiếp: đó là trace điển hình trước và sau, chưa phải p95.
+- **"Thiết kế cache cho cấu hình sự kiện đọc 50.000 lần mỗi giây trên 20 instance thế nào?"** L1 trong process TTL vài giây tới vài chục giây trước L2 Redis, nên key nóng gần như không chạm Redis. Admin sửa thì xoá L2 và phát Pub/Sub để instance xoá L1. Warmup trước sự kiện, coalescing để mỗi instance chỉ nạp một lần.
+- **"XFetch khác single-flight thế nào?"** Single-flight gộp request khi đã trượt, vẫn có một request phải chờ DB. XFetch làm mới sớm theo xác suất trước khi hết hạn, nên key nóng hầu như không bao giờ trượt. Thường dùng cùng nhau.
+- **"Big key gây hại gì?"** Redis thực thi lệnh trên một luồng chính, thao tác với big key chặn mọi lệnh khác, tốn băng thông, lệch bộ nhớ giữa các node. Chia nhỏ, nén, xoá bằng `UNLINK`.
+- **"Lớp Lua kiểm tra-rồi-ghi đó anh viết à?"** Không, lớp đó có sẵn trong hệ thống, tôi hiểu cách nó chạy và dùng nó. Script chỉ có vài lệnh O(1) trên một key nên chạy rất nhanh; script dài mới nguy hiểm vì Redis chạy script nguyên khối.
+
+#### Bẫy cần tránh
+- Xoá cache bằng `KEYS pattern` rồi `DEL` trên production.
+- L1 TTL dài trên nhiều instance mà không có Pub/Sub: mỗi instance thấy một phiên bản khác nhau.
+- Nói "giảm p95 từ 2 giây xuống 55 ms" khi số thật là trace điển hình.
+
+#### Nhớ nhanh
+- L1 + L2, L1 TTL ngắn hơn, xoá L1 qua Pub/Sub; `HybridCache` làm sẵn phần lớn.
 - Stampede: coalescing, XFetch, stale-while-revalidate.
-- Hot key: L1 và nhân bản key; big key: chia nhỏ, `UNLINK`.
-- Redis: pipeline, Lua nguyên tử, hash tag trong cluster, chọn eviction và persistence theo vai trò.
-- Cache HTTP: `Cache-Control`, ETag, Output Caching.
+- Xoá hàng loạt không quét keyspace: SET chỉ mục, version key, tag.
+- Redis: một luồng chính, Lua nguyên tử, hash tag trong cluster, eviction và persistence theo vai trò.
 
 #### Bài tập
 1. Viết pseudo-code XFetch cho hàm đọc key, biết cache lưu `value`, `delta` (thời gian nạp, giây) và `expiry`.
-   **Đáp án:** `if (entry == null || now - entry.delta * beta * Math.Log(Random.Shared.NextDouble()) >= entry.expiry) { var start = now; value = Load(); delta = now - start; Set(key, value, delta, now + ttl); } return value;` (`Math.Log` của số trong (0,1) là số âm nên vế trái lớn hơn `now`).
+   **Đáp án:** `if (entry == null || now - entry.delta * beta * Math.Log(Random.Shared.NextDouble()) >= entry.expiry) { var start = now; value = Load(); delta = now - start; Set(key, value, delta, now + ttl); } return value;` (`Math.Log` của số trong khoảng (0,1) là số âm nên vế trái lớn hơn `now`).
 2. Hai key `user:1:profile` và `user:1:stats` cần đọc trong một lệnh `MGET` trên Redis Cluster. Đặt lại tên key.
    **Đáp án:** `{user:1}:profile` và `{user:1}:stats`: phần trong ngoặc nhọn là hash tag, hai key cùng slot.
-3. Viết script Lua trừ lượt quay chỉ khi còn đủ lượt và đặt TTL nếu key mới tạo.
-   **Đáp án:** Như mẫu trong bài, thêm sau khi `DECRBY`: `if redis.call('TTL', KEYS[1]) == -1 then redis.call('EXPIRE', KEYS[1], ARGV[2]) end`.
+3. Thiết kế cách xoá mọi key cache của một kỳ thi mà không dùng `KEYS` hay `SCAN`.
+   **Đáp án:** Khi ghi key, `SADD exam:{examId}:keys <key>`; khi xoá, `SMEMBERS` rồi `UNLINK` từng lô và xoá SET. Hoặc đưa version vào key (`exam:{examId}:v{n}:...`), tăng version bằng `INCR`, key cũ tự hết hạn.
 
 ### Bài 23.3. Bất đồng bộ và messaging
 
-#### Mục tiêu
-- Sau bài này, bạn dùng được hàng đợi để san tải đỉnh (load leveling), ví dụ nộp bài cuối ca thi.
-- Bạn giải thích được partition, thứ tự, consumer group, consumer lag trong Kafka và mô hình ack/prefetch của RabbitMQ.
-- Bạn thiết kế được giao hàng tin cậy (outbox/inbox, idempotency, DLQ, retry) và saga thay cho distributed transaction.
+#### Kiến thức
+Hàng đợi giải quyết một vấn đề rất cụ thể: tải đến không đều mà tầng phía sau chỉ chịu được một tốc độ ổn định. Cái giá là kết quả không còn có ngay và phải xử lý giao hàng trùng.
 
-#### Load leveling
-Cuối ca thi, hàng chục nghìn thí sinh nộp bài trong vài chục giây. Nếu mỗi lần nộp ghi thẳng vào DB, DB phải chịu đỉnh gấp nhiều lần tải trung bình. Load leveling: API nhận bài, ghi vào hàng đợi bền (Kafka, RabbitMQ, hoặc bảng queue), trả "đã nhận" kèm mã theo dõi; consumer ghi vào DB với tốc độ DB chịu được. Đỉnh 50.000 lượt trong 30 giây, consumer ghi 5.000 lượt/giây thì hàng đợi xả hết trong khoảng 10 giây.
+##### Load leveling
+Cuối ca thi, hàng chục nghìn thí sinh nộp bài trong vài chục giây. Ghi thẳng vào DB thì DB phải chịu đỉnh gấp nhiều lần trung bình. Load leveling: API ghi bài nộp vào hàng đợi bền, trả "đã nhận" kèm mã theo dõi; consumer ghi DB với tốc độ DB chịu được. Đỉnh 50.000 lượt trong 30 giây, consumer ghi 5.000 lượt/giây thì hàng đợi xả hết trong khoảng 10 giây. Bài nộp phải được ghi bền vào hàng đợi trước khi trả "đã nhận"; client cần trạng thái "đang xử lý".
 
-Đánh đổi: kết quả không có ngay; client cần trạng thái "đang xử lý" và cách hỏi lại hoặc nhận thông báo. Bài nộp phải được ghi bền vào hàng đợi trước khi trả "đã nhận".
+##### Kafka
+- **Topic** chia thành **partition**; mỗi partition là log chỉ ghi nối tiếp. Thứ tự chỉ đảm bảo trong một partition.
+- **Partition key** quyết định message vào partition nào. Cần thứ tự theo thí sinh thì dùng `UserId`; key lệch gây partition nóng.
+- **Consumer group**: mỗi partition chỉ một consumer trong group đọc; số consumer hữu ích tối đa bằng số partition. Tăng partition làm đổi ánh xạ key, nên chọn dư từ đầu.
+- **Consumer lag**: offset mới nhất trừ offset đã commit; metric chính để biết consumer có theo kịp và để autoscale.
+- **Độ bền**: producer `acks=all` + `min.insync.replicas=2` với replication factor 3; producer idempotent tránh trùng khi retry gửi.
+- **Ngữ nghĩa giao hàng**: commit offset sau khi xử lý xong là at-least-once. Exactly-once của Kafka chỉ đúng trong phạm vi Kafka; ghi ra DB ngoài vẫn cần idempotency.
 
-#### Kafka
-- **Topic** chia thành **partition**; mỗi partition là log chỉ ghi nối tiếp, mỗi message có offset. Thứ tự chỉ đảm bảo trong một partition.
-- **Partition key** quyết định message vào partition nào (băm key). Cần thứ tự theo thí sinh thì dùng `UserId` làm key. Key lệch (một key quá nhiều message) gây partition nóng.
-- **Consumer group**: mỗi partition chỉ được một consumer trong group đọc; số consumer hữu ích tối đa bằng số partition. Muốn tăng song song phải tăng partition (chọn dư từ đầu, vì tăng partition làm đổi ánh xạ key).
-- **Consumer lag**: offset mới nhất trừ offset đã commit; là metric chính để biết consumer có theo kịp không, và để autoscale (KEDA).
-- **Độ bền**: producer `acks=all` + `min.insync.replicas=2` (với replication factor 3) để message không mất khi một broker chết; producer idempotent tránh trùng khi retry gửi.
-- **Ngữ nghĩa giao hàng**: commit offset sau khi xử lý xong → at-least-once (có thể xử lý trùng). Exactly-once của Kafka chỉ đúng trong phạm vi Kafka (transaction đọc-xử lý-ghi topic); ghi ra DB ngoài vẫn cần idempotency.
+##### RabbitMQ
+Producer gửi vào exchange, exchange định tuyến vào queue theo binding (direct, topic, fanout). Consumer xử lý xong thì `ack`; chết trước khi ack thì message được giao lại. `prefetch` giới hạn số message chưa ack mỗi consumer giữ, là cơ chế backpressure chính. Queue durable + message persistent + publisher confirm để không mất message; thất bại nhiều lần thì sang dead letter exchange. Chọn nhanh: Kafka khi cần thông lượng rất cao, đọc lại được, nhiều nhóm consumer cùng đọc một luồng sự kiện; RabbitMQ khi cần định tuyến linh hoạt và hàng đợi công việc.
 
-#### RabbitMQ
-Producer gửi vào exchange, exchange định tuyến vào queue theo binding (direct, topic, fanout). Consumer nhận message, xử lý xong thì `ack`; chưa ack mà consumer chết thì message được giao lại. `prefetch` (QoS) giới hạn số message chưa ack mỗi consumer giữ: đây là cơ chế backpressure chính. Queue bền (durable) + message persistent + publisher confirm để không mất message. Message thất bại nhiều lần chuyển sang dead letter exchange.
-
-Chọn nhanh: Kafka khi cần thông lượng rất cao, lưu lại để đọc lại (replay), nhiều nhóm consumer đọc cùng luồng sự kiện. RabbitMQ khi cần định tuyến linh hoạt, hàng đợi công việc, độ trễ thấp ở thông lượng vừa phải.
-
-#### Giao hàng tin cậy
-- **Outbox** (bài 21.3): ghi sự kiện cùng transaction với dữ liệu, relay đẩy lên broker.
-- **Inbox / idempotency**: consumer ghi `MessageId` đã xử lý vào bảng có unique key trong cùng transaction với thao tác nghiệp vụ; gặp trùng thì bỏ qua.
+##### Giao hàng tin cậy
+- **Outbox** ở phía gửi: sự kiện ghi cùng transaction với dữ liệu, relay đẩy lên broker sau.
+- **Inbox / idempotency** ở phía nhận: ghi `MessageId` vào bảng có unique key trong cùng transaction với thao tác nghiệp vụ; trùng thì bỏ qua.
 
 ```sql
 BEGIN TRAN;
   INSERT dbo.Inbox (MessageId, ProcessedAt) VALUES (@MessageId, SYSUTCDATETIME()); -- unique key
   INSERT dbo.Submission (...) VALUES (...);
 COMMIT;
--- lỗi 2627 (trùng khoá) ở câu đầu nghĩa là đã xử lý: ack và bỏ qua
+-- lỗi 2627 ở câu đầu nghĩa là đã xử lý: ack và bỏ qua
 ```
 
-- **Idempotency key ở API**: client gửi kèm khoá duy nhất cho mỗi lần nộp; server lưu kết quả theo khoá, gửi lại cùng khoá thì trả kết quả cũ.
-- **Retry có backoff**: lỗi tạm thời thì thử lại sau 1 s, 2 s, 4 s... cộng jitter; giới hạn số lần.
-- **DLQ** (dead letter queue): message lỗi vượt số lần retry (hoặc lỗi không thể retry, như dữ liệu sai) chuyển sang hàng riêng để xem xét, không chặn hàng chính. Phải có cảnh báo và công cụ xử lý lại.
+- **Retry có backoff + jitter**, giới hạn số lần; **DLQ** cho message vượt số lần retry hoặc lỗi dữ liệu, có cảnh báo và công cụ xử lý lại.
 
-#### Saga
-Saga thay distributed transaction bằng chuỗi transaction local, mỗi bước có hành động bù (compensation) nếu bước sau thất bại. Ví dụ đổi quà: trừ điểm → giữ quà → tạo đơn; tạo đơn lỗi thì trả quà, hoàn điểm.
-- **Orchestration**: một bộ điều phối gọi từng bước, giữ trạng thái saga; dễ theo dõi.
-- **Choreography**: mỗi dịch vụ nghe sự kiện và phát sự kiện tiếp; ít phụ thuộc nhưng khó nhìn toàn luồng.
+##### Saga
+Saga thay distributed transaction bằng chuỗi transaction local, mỗi bước có hành động bù. Ví dụ đổi quà: trừ điểm → giữ quà → tạo đơn; tạo đơn lỗi thì trả quà, hoàn điểm. Orchestration có một bộ điều phối giữ trạng thái, dễ theo dõi; choreography để mỗi dịch vụ nghe và phát sự kiện, ít phụ thuộc nhưng khó nhìn toàn luồng. Saga không có cô lập: trạng thái trung gian nhìn thấy được, nên cần trạng thái "đang xử lý" và hành động bù idempotent.
 
-Saga không có cô lập: trạng thái trung gian (điểm đã trừ, đơn chưa tạo) nhìn thấy được. Thiết kế trạng thái "đang xử lý" và hành động bù idempotent.
+##### Xếp hạng theo luồng sự kiện
+Thay job tính lại toàn bộ bảng xếp hạng mỗi vài phút bằng cập nhật tăng dần: mỗi sự kiện điểm cập nhật Redis sorted set (`ZINCRBY`, đọc top bằng `ZREVRANGE`, hạng bằng `ZREVRANK`). Score của sorted set là số `double`, chính xác tới khoảng 2^53. Đừng nhồi "điểm × hệ số lớn + thời gian" vào một score mà không tính số bit: vượt 2^53 thì hai người khác nhau có thể bị làm tròn về cùng score. Tie-break an toàn hơn là giữ score chỉ là điểm và phân định khi đọc top N (đọc thêm thời gian từ hash hoặc DB), hoặc ghép có tính toán sao cho tổng vẫn nằm gọn trong 53 bit. Vẫn cần job đối soát định kỳ với DB.
 
-#### Xử lý luồng
-Thay job tính lại toàn bộ (ví dụ xếp hạng chạy lại trên toàn bảng mỗi 5 phút) bằng tổng hợp tăng dần: mỗi sự kiện nộp bài cập nhật điểm và hạng ngay (Redis sorted set `ZINCRBY`, hoặc Kafka Streams/Flink với cửa sổ thời gian). Flink và Kafka Streams quản lý trạng thái, cửa sổ (tumbling, sliding), dữ liệu đến muộn (watermark). Đánh đổi: hệ thống phức tạp hơn; vẫn cần job đối soát định kỳ.
+#### Cách show off
+Bạn có trải nghiệm thật với cả hai broker: hệ thống thi có hơn 20 service .NET gọi nhau qua HTTP/gRPC và Kafka; bạn code toàn bộ luồng bảng xếp hạng của một trò chơi, sự kiện điểm đi qua Kafka (partition theo trận để giữ thứ tự) vào Redis sorted set. Ở AvePoint, bạn tham gia chuyển hệ thống sang .NET với CQRS và RabbitMQ. Outbox và saga chưa dùng thật; nếu được hỏi, nói thẳng.
 
-#### Kiểm chứng
-- Consumer lag và thời gian từ lúc nhận tới lúc ghi DB (end-to-end latency) trong đỉnh nộp bài.
-- Số message trong DLQ bằng 0 hoặc có cảnh báo; số bản ghi trùng bằng 0 (đếm theo `MessageId`).
-- Đối soát định kỳ: số bài nộp nhận ở API bằng số bài ghi trong DB.
+> **Ví dụ:** "Ở bảng xếp hạng của một trò chơi trong hệ thống thi, tôi làm cả luồng: service game phát sự kiện điểm lên Kafka, partition theo mã trận để các sự kiện của một trận đi đúng thứ tự, consumer cập nhật Redis sorted set, API đọc top và hạng của từng người trực tiếp từ đó. Consumer xử lý at-least-once nên tôi cần chống trùng theo mã sự kiện, và khi Redis mất dữ liệu thì dựng lại từ DB hoặc đọc lại Kafka từ offset cũ. Một chi tiết hay bị bỏ qua là tie-break: score của sorted set là số thực, nhồi cả điểm lẫn thời gian vào đó dễ mất chính xác. Outbox và saga thì ở dự án tôi chưa dùng; nếu làm tích hợp kiểu đổi quà nhiều bước, tôi sẽ dùng outbox ở phía gửi, inbox ở phía nhận, và saga có hành động bù cho từng bước."
 
-#### Bẫy
-- Trả "đã nhận" trước khi message được ghi bền (producer chưa nhận ack): broker chết là mất bài.
-- Retry vô hạn một message lỗi dữ liệu: chặn cả partition (Kafka xử lý tuần tự trong partition). Chuyển sang DLQ sau N lần.
-- Tăng consumer khi nút thắt là DB: lag không giảm, DB quá tải thêm.
+Điểm ăn điểm:
+- Thứ tự chỉ trong một partition; chọn partition key theo đơn vị cần thứ tự.
+- At-least-once là mặc định thực tế, nên phía nhận phải idempotent.
+- Tăng consumer không giúp khi nút thắt là DB.
+- Chi tiết tie-break và giới hạn chính xác của score.
 
-#### Câu hỏi phỏng vấn
-- **"Cuối ca thi 50.000 thí sinh nộp bài trong 30 giây, bạn thiết kế thế nào để DB không sập?"** API ghi bài nộp vào hàng đợi bền rồi trả "đã nhận" kèm mã theo dõi; consumer ghi DB theo lô với tốc độ cố định; idempotency key để nộp lại không trùng. Theo dõi consumer lag, autoscale consumer trong giới hạn DB chịu được, client hiển thị trạng thái "đang xử lý".
-- **"Kafka đảm bảo thứ tự message thế nào?"** Chỉ trong một partition. Message cùng key vào cùng partition nên giữ thứ tự theo key; giữa các partition không có thứ tự. Retry ở producer có thể đảo thứ tự nếu không bật idempotent producer.
-- **"Vì sao consumer phải idempotent dù đã dùng Kafka exactly-once?"** Exactly-once của Kafka chỉ trong phạm vi đọc-ghi giữa các topic Kafka. Ghi ra DB ngoài, consumer có thể xử lý xong nhưng chết trước khi commit offset, lần sau xử lý lại. Inbox với unique key trên `MessageId` chặn trùng.
-- **"Saga khác distributed transaction thế nào?"** Distributed transaction (2PC) khoá tài nguyên ở mọi bên tới khi commit chung; một bên chậm thì tất cả chờ. Saga là chuỗi transaction local, lỗi thì chạy hành động bù; không giữ khoá xuyên dịch vụ nhưng không có cô lập, trạng thái trung gian nhìn thấy được.
-- **"Consumer lag tăng liên tục, bạn làm gì?"** Xem consumer chậm vì đâu (DB, API ngoài, message lỗi retry mãi); tăng consumer nếu còn partition rảnh; xử lý theo lô; chuyển message lỗi sang DLQ để không chặn. Nếu nút thắt là DB thì tăng consumer chỉ dồn tải vào DB.
+#### Câu hỏi vặn
+- **"Cuối ca thi 50.000 thí sinh nộp bài trong 30 giây, anh thiết kế thế nào để DB không sập?"** API ghi bài nộp vào hàng đợi bền rồi trả "đã nhận" kèm mã theo dõi; consumer ghi DB theo lô với tốc độ cố định; idempotency key để nộp lại không trùng. Theo dõi consumer lag, scale consumer trong giới hạn DB chịu được, client hiển thị "đang xử lý".
+- **"Kafka đảm bảo thứ tự thế nào?"** Chỉ trong một partition. Message cùng key vào cùng partition nên giữ thứ tự theo key; giữa các partition không có thứ tự. Retry ở producer có thể đảo thứ tự nếu không bật idempotent producer.
+- **"Vì sao consumer phải idempotent dù Kafka có exactly-once?"** Exactly-once của Kafka chỉ trong phạm vi đọc-ghi giữa các topic. Ghi ra DB ngoài, consumer có thể xử lý xong nhưng chết trước khi commit offset, lần sau xử lý lại. Inbox với unique key trên `MessageId` chặn trùng.
+- **"Saga khác distributed transaction thế nào?"** 2PC khoá tài nguyên ở mọi bên tới khi commit chung; một bên chậm thì tất cả chờ. Saga là chuỗi transaction local, lỗi thì chạy hành động bù; không giữ khoá xuyên dịch vụ nhưng không có cô lập.
+- **"Consumer lag tăng liên tục, anh làm gì?"** Xem consumer chậm vì đâu: DB, API ngoài, hay message lỗi retry mãi. Tăng consumer nếu còn partition rảnh, xử lý theo lô, đẩy message lỗi sang DLQ. Nếu nút thắt là DB thì tăng consumer chỉ dồn thêm tải.
+- **"Hai người cùng điểm thì bảng xếp hạng xếp thế nào?"** Theo quy tắc nghiệp vụ, thường ai đạt trước xếp trên. Tôi không nhồi điểm và thời gian vào một score double vượt 53 bit; giữ score là điểm và phân định khi đọc top, hoặc ghép có tính số bit. Nếu bị hỏi tiếp: Redis với score bằng nhau sắp theo thứ tự từ điển của member, nên cũng có thể mã hoá thời gian vào tên member, nhưng phải tính chiều sắp xếp khi đọc ngược.
+- **"Anh dùng outbox ở dự án chưa?"** Chưa. Có chỗ hệ thống có bảng outbox nhưng dòng outbox không được ghi chung transaction với dữ liệu nghiệp vụ, nên chưa có đúng đảm bảo của outbox. Nếu làm, tôi đưa việc ghi outbox vào cùng transaction và thêm inbox ở phía nhận.
 
-#### Tóm tắt
+#### Bẫy cần tránh
+- Trả "đã nhận" trước khi message được ghi bền: broker chết là mất bài.
+- Retry vô hạn một message lỗi dữ liệu: chặn cả partition. Sau N lần chuyển sang DLQ.
+- Nhận outbox, saga là đã triển khai khi chỉ là thiết kế.
+
+#### Nhớ nhanh
 - Hàng đợi bền san tải đỉnh; trả "đã nhận" sau khi ghi bền.
 - Kafka: thứ tự trong partition, song song tối đa bằng số partition, theo dõi consumer lag.
 - RabbitMQ: ack, prefetch làm backpressure, dead letter exchange.
-- At-least-once là mặc định thực tế: outbox ở phía gửi, inbox/idempotency ở phía nhận, DLQ cho message lỗi.
-- Saga thay 2PC bằng transaction local + hành động bù.
+- At-least-once: outbox phía gửi, inbox/idempotency phía nhận, DLQ cho message lỗi; saga thay 2PC.
 
 #### Bài tập
 1. Hàng đợi nộp bài nhận 60.000 message trong 20 giây, consumer xử lý 4.000 message/giây. Tính độ dài hàng đợi lớn nhất và thời gian xả hết.
-   **Đáp án:** Tốc độ vào 3.000/giây, nhỏ hơn 4.000/giây nên hàng đợi không tích luỹ đáng kể; xả gần như ngay sau 20 giây. Nếu tốc độ vào 10.000/giây trong 6 giây (cùng 60.000): tích 6 × 6.000 = 36.000, xả thêm 9 giây.
-2. Chọn partition key cho topic sự kiện nộp bài cần giữ thứ tự theo thí sinh, và nêu rủi ro.
-   **Đáp án:** `UserId`. Rủi ro: thí sinh gửi bất thường nhiều gây partition nóng (hiếm với nộp bài); thay đổi số partition làm đổi ánh xạ key.
-3. Thiết kế saga đổi quà gồm trừ điểm, giữ quà, tạo đơn; liệt kê hành động bù.
-   **Đáp án:** Trừ điểm ↔ hoàn điểm; giữ quà ↔ trả quà về kho; tạo đơn là bước cuối, lỗi thì chạy bù hai bước trước theo thứ tự ngược. Mỗi bước và hành động bù idempotent theo mã saga.
+   **Đáp án:** Tốc độ vào 3.000/giây, nhỏ hơn 4.000/giây nên hàng đợi gần như không tích luỹ. Nếu vào 10.000/giây trong 6 giây (cùng 60.000): tích 6 × 6.000 = 36.000, xả thêm 9 giây.
 
 ### Bài 23.4. Scale và chịu lỗi
 
-#### Mục tiêu
-- Sau bài này, bạn thiết kế được service stateless có autoscale và load balancing phù hợp.
-- Bạn bảo vệ được hệ thống bằng rate limiting, load shedding, admission control.
-- Bạn cấu hình được timeout, retry, circuit breaker, bulkhead, hedging cho lời gọi giữa service.
+#### Kiến thức
+Ở quy mô lớn, câu hỏi không phải "làm sao không bao giờ lỗi" mà là "khi một phần lỗi hoặc quá tải, phần còn lại có đứng vững không".
 
-#### Stateless và autoscale
-Service stateless không giữ trạng thái người dùng trong bộ nhớ process (session, giỏ hàng, tiến độ bài làm nằm ở Redis/DB), nên instance nào cũng phục vụ được mọi request và có thể thêm/bớt tự do.
-- **HPA** (Kubernetes Horizontal Pod Autoscaler): scale theo CPU, bộ nhớ hoặc metric tuỳ chỉnh.
-- **KEDA**: scale theo nguồn sự kiện (consumer lag Kafka, độ dài queue RabbitMQ, lịch cron). Với kỳ thi biết trước giờ, scale theo lịch trước ca hiệu quả hơn chờ CPU tăng mới scale (scale phản ứng chậm vài phút).
+##### Stateless, autoscale, load balancing
+Service stateless không giữ trạng thái người dùng trong process (session, tiến độ bài làm nằm ở Redis/DB), nên instance nào cũng phục vụ được mọi request. HPA scale theo CPU, bộ nhớ hoặc metric tuỳ chỉnh; KEDA scale theo nguồn sự kiện (consumer lag, độ dài queue, lịch cron). Với kỳ thi biết trước giờ, scale theo lịch trước ca tốt hơn chờ CPU tăng, vì scale phản ứng chậm vài phút. Load balancing: round-robin đơn giản; least-connection gửi tới instance ít kết nối nhất; power of two choices chọn ngẫu nhiên hai instance rồi gửi tới cái nhẹ hơn, gần tốt như least-connection mà không cần trạng thái toàn cục.
 
-#### Load balancing
-- Round-robin: đơn giản, kém khi request có độ dài rất khác nhau.
-- Least-connection: gửi tới instance đang ít kết nối nhất.
-- Power of two choices: chọn ngẫu nhiên hai instance, gửi tới instance tải thấp hơn. Gần tốt như least-connection mà không cần trạng thái toàn cục chính xác, tránh hiện tượng mọi load balancer cùng dồn vào một instance "đang rảnh".
-
-#### Bảo vệ hệ thống
-- **Rate limiting**: giới hạn số request theo khách (IP, user, API key). Token bucket: bucket chứa tối đa B token, nạp R token/giây, mỗi request lấy một token; cho phép burst tới B. Sliding window: đếm request trong cửa sổ trượt, mượt hơn fixed window (fixed window cho phép gấp đôi ở ranh giới cửa sổ). Rate limit trong process chỉ đúng cho một instance; giới hạn toàn cục cần Redis hoặc gateway. Ví dụ ASP.NET Core (từ .NET 7) ở cuối mục này.
-- **Load shedding**: khi quá tải, chủ động từ chối sớm (503, `Retry-After`) một phần request thay vì để mọi request chậm rồi timeout. Từ chối rẻ hơn nhiều so với xử lý dở dang.
-- **Admission control**: chỉ cho N người vào phiên làm bài đồng thời, người tới sau vào phòng chờ có thứ tự. Hợp cho kỳ thi: người đã vào làm bài có trải nghiệm ổn định.
-- **Hàng đợi ưu tiên**: nộp bài ưu tiên hơn xem lịch sử; khi quá tải, cắt loại ít quan trọng trước.
-- Giới hạn đồng thời trong .NET: `ConcurrencyLimiter` hoặc `SemaphoreSlim` quanh lời gọi DB (bulkhead).
+##### Bảo vệ hệ thống
+- **Rate limiting** theo khách (IP, user, API key). Token bucket cho phép burst tới dung lượng bucket rồi giới hạn theo tốc độ nạp; fixed window cho phép gấp đôi ở ranh giới hai khung. Rate limit trong process chỉ đúng cho một instance; giới hạn toàn cục cần Redis hoặc gateway.
+- **Load shedding**: quá tải thì chủ động từ chối sớm (503, `Retry-After`) một phần request, thay vì để mọi request chậm rồi timeout.
+- **Admission control**: chỉ cho N người vào phiên làm bài đồng thời, người tới sau vào phòng chờ có thứ tự.
+- **Bulkhead**: giới hạn đồng thời theo từng phụ thuộc (`ConcurrencyLimiter`, `SemaphoreSlim`), để một phụ thuộc chậm không chiếm hết tài nguyên.
 
 ```csharp
 builder.Services.AddRateLimiter(o =>
 {
-    o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    o.RejectionStatusCode = StatusCodes.Status429TooManyRequests; // mặc định là 503
     o.AddPolicy("submit", ctx => RateLimitPartition.GetTokenBucketLimiter(
         ctx.User.Identity?.Name ?? ctx.Connection.RemoteIpAddress?.ToString() ?? "anon",
         _ => new TokenBucketRateLimiterOptions
@@ -1332,14 +1137,15 @@ app.UseRateLimiter();
 app.MapPost("/exam/submit", SubmitAsync).RequireRateLimiting("submit");
 ```
 
-#### Gọi giữa service
-- **Timeout có ngân sách**: request vào có tổng ngân sách (ví dụ 2 giây); mỗi chặng con nhận phần còn lại, truyền deadline xuống (gRPC có deadline sẵn). Không đặt timeout chặng con dài hơn chặng cha.
-- **Retry**: chỉ cho lỗi tạm thời và thao tác idempotent; exponential backoff + jitter; giới hạn số lần và có retry budget (ví dụ retry không quá 10% tổng request). Retry ở nhiều tầng nhân lên: 3 tầng × 3 lần = 27 lần gọi tới tầng cuối.
-- **Circuit breaker**: lỗi vượt ngưỡng thì "mở mạch", trả lỗi ngay trong một khoảng thời gian, sau đó cho vài request thử (half-open). Bảo vệ cả dịch vụ đang hỏng lẫn tài nguyên của bên gọi.
-- **Bulkhead**: chia tài nguyên (pool, giới hạn đồng thời) theo từng phụ thuộc, để một phụ thuộc chậm không chiếm hết thread/kết nối của cả service.
-- **Hedged request**: gửi request thứ hai tới instance khác nếu request đầu chưa trả lời sau ngưỡng (ví dụ p95); lấy kết quả về trước. Giảm tail latency, đổi lại tăng tải; chỉ cho thao tác đọc idempotent.
+> **Ghi nhớ:** Middleware rate limiting của ASP.NET Core mặc định trả 503 khi từ chối. Muốn client hiểu là "bạn gửi quá nhanh" thì phải đặt `RejectionStatusCode = 429`; 503 nên dành cho load shedding khi chính server quá tải.
 
-.NET 8 có `Microsoft.Extensions.Http.Resilience` (dựa trên Polly v8): `AddStandardResilienceHandler()` gắn sẵn rate limiter, timeout tổng, retry, circuit breaker, timeout mỗi lần thử; `AddStandardHedgingHandler()` cho hedging.
+##### Gọi giữa service
+- **Timeout có ngân sách**: request vào có tổng ngân sách; mỗi chặng con nhận phần còn lại (gRPC có deadline sẵn). Timeout chặng con không dài hơn chặng cha.
+- **Retry**: chỉ cho lỗi tạm thời và thao tác idempotent; exponential backoff + jitter; giới hạn số lần và có retry budget. Retry ở nhiều tầng nhân lên: ba tầng, mỗi tầng 1 lần gốc + 3 lần retry, là tới 64 lần gọi xuống tầng cuối.
+- **Circuit breaker**: lỗi vượt ngưỡng thì mở mạch, trả lỗi ngay một thời gian, sau đó cho vài request thử.
+- **Hedged request**: gửi bản thứ hai tới instance khác nếu bản đầu chưa trả lời sau ngưỡng như p95; giảm tail latency, đổi lại tăng tải, chỉ cho thao tác đọc idempotent.
+
+.NET 8 có `Microsoft.Extensions.Http.Resilience` (dựa trên Polly v8): `AddStandardResilienceHandler()` gắn sẵn rate limiter, timeout tổng, retry, circuit breaker, timeout mỗi lần thử.
 
 ```csharp
 builder.Services.AddHttpClient<ScoreClient>(c => c.BaseAddress = new Uri("https://score.internal"))
@@ -1351,187 +1157,144 @@ builder.Services.AddHttpClient<ScoreClient>(c => c.BaseAddress = new Uri("https:
     });
 ```
 
-#### Suy giảm có kiểm soát
-- **Graceful degradation**: khi phụ thuộc phụ hỏng, tắt tính năng phụ (gợi ý, thống kê), giữ luồng chính (làm bài, nộp bài).
-- **Feature flag / kill switch**: bật tắt tính năng lúc chạy không cần deploy; kill switch là flag để tắt nhanh phần gây sự cố.
+##### Suy giảm có kiểm soát và warmup
+Khi phụ thuộc phụ hỏng, tắt tính năng phụ (xếp hạng thời gian thực, gợi ý), giữ luồng chính (vào thi, lấy đề, nộp bài); feature flag và kill switch cho phép tắt nhanh mà không deploy. Instance mới khởi động có cache trống, pool trống, JIT chưa chạy: readiness probe chỉ báo sẵn sàng sau warmup. Nhiều instance cùng khởi động cùng nạp cache, cùng kết nối DB (thundering herd): giãn thời điểm bằng rolling deploy, jitter, và L2 cache dùng chung. Cell-based architecture chia hệ thống thành nhiều cell độc lập phục vụ từng nhóm người dùng, giới hạn phạm vi sự cố.
 
-#### Warmup, cold start, thundering herd
-Instance mới khởi động có JIT chưa chạy, cache trống, pool kết nối trống: request đầu chậm. Dùng readiness probe chỉ báo sẵn sàng sau khi warmup (nạp cache, mở sẵn kết nối, gọi thử endpoint nóng). Thundering herd: nhiều instance cùng khởi động (sau deploy, sau sự cố) cùng nạp cache, cùng kết nối DB; giãn thời điểm (rolling deploy, jitter khi khởi động), dùng L2 cache dùng chung.
+#### Cách show off
+Phần thật: ứng dụng chạy nhiều pod sau load balancer trên Kubernetes, dùng Redis Cluster. Rate limiting, circuit breaker, load shedding ở dự án bạn chưa triển khai; đây là bài để nói theo hướng thiết kế, có lập luận cho đúng bài toán kỳ thi.
 
-#### Cell-based architecture
-Chia hệ thống thành nhiều cell độc lập, mỗi cell đủ thành phần (app, cache, DB) và phục vụ một nhóm người dùng (theo tỉnh, theo trường). Sự cố hoặc deploy lỗi ở một cell chỉ ảnh hưởng nhóm đó (giới hạn blast radius). Đánh đổi: chi phí, định tuyến người dùng vào đúng cell, dữ liệu dùng chung giữa cell.
+> **Ví dụ:** "Ở dự án, ứng dụng đã chạy nhiều pod sau load balancer trên Kubernetes, nhưng lớp bảo vệ quá tải như rate limit hay circuit breaker tôi chưa triển khai. Nếu thiết kế cho giờ mở ca thi, tôi sẽ scale theo lịch trước giờ mở ca thay vì chờ CPU tăng, vì tải dồn trong vài chục giây còn pod mới cần vài phút. Tôi đặt admission control để người đã vào thi có trải nghiệm ổn định, người đến sau vào phòng chờ có thứ tự. Nộp bài có rate limit theo thí sinh, trả 429 chứ không để mặc định 503, và có idempotency key để retry không sinh bài trùng. Khi quá tải, tắt trước những thứ không thiết yếu như xếp hạng thời gian thực, giữ nguyên luồng làm bài và nộp bài."
 
-#### Kiểm chứng
-- Load test vượt công suất: hệ thống trả 429/503 nhanh, p99 của request được nhận vẫn trong SLO, không sập dây chuyền.
-- Fault injection: làm chậm một phụ thuộc, xác nhận circuit breaker mở, bulkhead giữ phần còn lại hoạt động.
-- Đo thời gian từ lúc scale tới lúc instance mới nhận tải ổn định.
+Điểm ăn điểm:
+- Phân biệt rate limiting (công bằng theo khách) với load shedding (theo tình trạng hệ thống).
+- Tính được hiệu ứng nhân của retry nhiều tầng.
+- Biết mặc định 503 của rate limiter ASP.NET Core và vì sao đổi sang 429.
+- Scale theo lịch cho tải biết trước.
 
-#### Bẫy
-- Timeout chặng con dài hơn chặng cha: chặng cha đã bỏ cuộc nhưng chặng con vẫn làm, tốn tài nguyên vô ích.
-- Retry thao tác không idempotent (nộp bài không có idempotency key): sinh bản ghi trùng.
-- Autoscale theo CPU cho tải dồn trong vài giây: instance mới lên khi đỉnh đã qua.
+#### Câu hỏi vặn
+- **"Token bucket khác fixed window thế nào?"** Fixed window đếm theo khung cố định, cho phép gấp đôi giới hạn ở ranh giới hai khung. Token bucket cho burst tới dung lượng bucket rồi giới hạn theo tốc độ nạp, mượt hơn. Sliding window ở giữa.
+- **"Retry có thể làm sự cố tệ hơn thế nào?"** Retry nhân tải lên dịch vụ đang quá tải, nhất là khi nhiều tầng cùng retry. Chỉ retry lỗi tạm thời và thao tác idempotent, có backoff + jitter, retry budget, và circuit breaker để dừng khi dịch vụ đang hỏng; tốt nhất chỉ retry ở một tầng.
+- **"Load shedding và rate limiting khác nhau ở đâu?"** Rate limiting giới hạn theo từng khách để công bằng và chống lạm dụng, áp dụng cả khi hệ thống rảnh. Load shedding dựa trên tình trạng hệ thống: quá tải thì từ chối bớt, ưu tiên giữ loại request quan trọng.
+- **"Sao đặt RejectionStatusCode là 429?"** Middleware mặc định trả 503, client và gateway sẽ hiểu là server hỏng và có thể retry ngay hoặc đánh dấu instance lỗi. 429 nói rõ client gửi quá nhanh, kèm `Retry-After` để client chờ đúng.
+- **"Kỳ thi bắt đầu lúc 8:00, anh chuẩn bị scale thế nào?"** Scale theo lịch trước giờ mở ca, warmup cache đề và kết nối, readiness probe sau warmup; admission control cho phòng chờ; rate limit cho nộp bài; tắt tính năng phụ khi quá tải; theo dõi p99 và tỉ lệ lỗi theo thời gian thực.
+- **"Phần này anh làm thật chưa?"** Hạ tầng nhiều pod và Redis Cluster là có thật. Rate limit, circuit breaker, load shedding tôi chưa triển khai ở dự án; tôi trình bày thiết kế tôi sẽ làm và các chỉ số để kiểm chứng bằng load test.
 
-#### Câu hỏi phỏng vấn
-- **"Token bucket khác fixed window thế nào?"** Fixed window đếm theo khung cố định, cho phép gấp đôi giới hạn ở ranh giới hai khung. Token bucket cho phép burst tới dung lượng bucket rồi giới hạn theo tốc độ nạp, mượt hơn. Sliding window là lựa chọn ở giữa.
-- **"Retry có thể làm sự cố tệ hơn như thế nào?"** Retry nhân tải lên dịch vụ đang quá tải, đặc biệt khi nhiều tầng cùng retry (3 tầng × 3 lần = 27 lần). Chỉ retry lỗi tạm thời và thao tác idempotent, có backoff + jitter, retry budget, và circuit breaker để dừng khi dịch vụ đang hỏng.
-- **"Load shedding và rate limiting khác nhau ở đâu?"** Rate limiting giới hạn theo từng khách để công bằng và chống lạm dụng, áp dụng cả khi hệ thống rảnh. Load shedding dựa trên tình trạng của hệ thống: khi quá tải thì từ chối bớt request (ưu tiên giữ loại quan trọng) để phần còn lại vẫn nhanh.
-- **"Hedged request giảm tail latency thế nào và giá phải trả là gì?"** Nếu request chưa trả lời sau ngưỡng như p95, gửi bản thứ hai tới instance khác và lấy kết quả về trước; p99 giảm vì ít khi cả hai cùng chậm. Giá: tăng tải (vài phần trăm nếu ngưỡng là p95), chỉ dùng cho thao tác idempotent.
-- **"Kỳ thi bắt đầu lúc 8:00, bạn chuẩn bị scale thế nào?"** Scale theo lịch trước giờ mở ca (KEDA cron hoặc script), warmup instance (cache đề, kết nối), readiness probe sau warmup; admission control cho phòng chờ; rate limit cho nộp bài; load shedding cho tính năng phụ; theo dõi p99 và tỉ lệ lỗi theo thời gian thực.
+#### Bẫy cần tránh
+- Timeout chặng con dài hơn chặng cha: chặng cha đã bỏ cuộc nhưng chặng con vẫn làm.
+- Retry thao tác không idempotent (nộp bài không có idempotency key).
+- Autoscale theo CPU cho tải dồn trong vài giây: pod mới lên khi đỉnh đã qua.
 
-#### Tóm tắt
+#### Nhớ nhanh
 - Service stateless để scale ngang; tải biết trước thì scale theo lịch.
-- Rate limiting theo khách, load shedding theo tình trạng hệ thống, admission control cho phiên.
+- Rate limiting theo khách (429), load shedding theo tình trạng hệ thống (503), admission control cho phiên.
 - Timeout có ngân sách, retry có backoff + jitter + budget, circuit breaker, bulkhead, hedging.
 - Warmup trước khi nhận tải; giãn khởi động để tránh thundering herd.
-- Cell-based architecture giới hạn phạm vi sự cố.
 
 #### Bài tập
-1. Một request đi qua gateway → API → dịch vụ điểm → DB, mỗi tầng retry 3 lần. Khi DB lỗi, một request người dùng tạo tối đa bao nhiêu lần gọi tới DB? Đề xuất sửa.
-   **Đáp án:** Mỗi tầng gọi tối đa 4 lần (1 + 3 retry): 4 × 4 × 4 = 64 lần. Chỉ retry ở một tầng (gần lỗi nhất), có retry budget và circuit breaker.
-2. Cấu hình token bucket cho API nộp bài: mỗi thí sinh tối đa 5 lần liên tiếp, sau đó 1 lần mỗi 2 giây.
-   **Đáp án:** `TokenLimit = 5`, `TokensPerPeriod = 1`, `ReplenishmentPeriod = 2 s`, partition theo user; nếu nhiều instance thì giới hạn ở gateway hoặc Redis.
-3. Liệt kê ba tính năng có thể tắt khi quá tải trong giờ thi và ba tính năng phải giữ.
+1. Request đi qua gateway → API → dịch vụ điểm → DB, mỗi tầng retry 3 lần. Khi DB lỗi, một request người dùng tạo tối đa bao nhiêu lần gọi tới DB? Đề xuất sửa.
+   **Đáp án:** Mỗi tầng gọi tối đa 4 lần (1 + 3 retry): 4 × 4 × 4 = 64 lần. Chỉ retry ở một tầng gần lỗi nhất, có retry budget và circuit breaker.
+2. Liệt kê ba tính năng có thể tắt khi quá tải trong giờ thi và ba tính năng phải giữ.
    **Đáp án:** Tắt: bảng xếp hạng thời gian thực, lịch sử luyện tập, gợi ý bài. Giữ: vào phòng thi, lấy đề, lưu đáp án và nộp bài.
 
 ### Bài 23.5. Runtime .NET
 
-#### Mục tiêu
-- Sau bài này, bạn nhận ra và sửa được thread pool starvation do sync-over-async.
-- Bạn giải thích được GC thế hệ, Server GC, LOH và giảm được cấp phát bằng `Span<T>`, `ArrayPool<T>`, object pooling.
-- Bạn chọn được công cụ đo (`dotnet-counters`, `dotnet-trace`, BenchmarkDotNet) và biết khi nào dùng Native AOT, ReadyToRun.
+#### Kiến thức
+Có những lúc DB và mạng đều ổn mà API vẫn chậm. Khi đó nút thắt nằm trong chính process .NET: thread pool, GC, cấp phát bộ nhớ.
 
-#### Thread pool starvation
-ASP.NET Core xử lý request trên thread của thread pool. Code async đúng cách trả thread về pool khi chờ I/O. Sync-over-async (`.Result`, `.Wait()`, `GetAwaiter().GetResult()` trên Task chưa xong) giữ thread chặn trong lúc chờ; phần tiếp theo của Task đó lại cần một thread khác từ pool để chạy. Khi tải cao, mọi thread đều bị chặn chờ những công việc đang xếp hàng sau chúng.
+##### Thread pool starvation
+ASP.NET Core xử lý request trên thread của thread pool. Code async đúng cách trả thread về pool khi chờ I/O. Sync-over-async (`.Result`, `.Wait()`, `GetAwaiter().GetResult()` trên Task chưa xong) giữ thread đứng chờ, trong khi phần tiếp theo của chính Task đó lại cần một thread khác từ pool. Khi tải cao, mọi thread đều bị chặn chờ những việc đang xếp hàng sau chúng.
 
-Thread pool có số thread tối thiểu bằng số CPU; vượt mức đó, nó chỉ thêm thread từ từ (thuật toán hill climbing, cỡ vài thread mỗi giây khi bị đói). Triệu chứng: latency tăng vọt theo bậc, CPU thấp, hàng đợi thread pool dài, số thread tăng dần đều.
+Thread pool có số thread tối thiểu bằng số CPU; vượt mức đó nó chỉ thêm thread từ từ (vài thread mỗi giây khi bị đói). Triệu chứng: latency tăng vọt theo bậc, CPU thấp, hàng đợi thread pool dài, số thread tăng dần đều.
 
 ```bash
 dotnet-counters monitor -p <pid> --counters System.Runtime
-# xem: ThreadPool Queue Length, ThreadPool Thread Count, ThreadPool Completed Work Item Count
-# (tên counter khác nhau giữa các phiên bản .NET; .NET 9+ có tên dạng dotnet.thread_pool.queue.length)
+# xem queue length, thread count, completed work items của thread pool
+# (tên counter khác nhau giữa các phiên bản; .NET 9+ có dạng dotnet.thread_pool.queue.length)
 ```
 
-Sửa gốc: async xuyên suốt từ controller tới driver DB. Tăng `ThreadPool.SetMinThreads` chỉ là băng tạm, che triệu chứng. Các nguồn chặn khác: `lock` quanh I/O, `Thread.Sleep`, thư viện chỉ có API đồng bộ.
+Sửa gốc: async xuyên suốt từ controller tới driver DB. `ThreadPool.SetMinThreads` chỉ là băng tạm, che triệu chứng. Các nguồn chặn khác: `lock` quanh I/O, `Thread.Sleep`, thư viện chỉ có API đồng bộ.
 
-#### GC và cấp phát
-.NET GC chia heap theo thế hệ: Gen0 (đối tượng mới, thu gom thường xuyên và rẻ), Gen1 (đệm), Gen2 (sống lâu, thu gom đắt). Giả thuyết thế hệ: phần lớn đối tượng chết trẻ. Đối tượng từ 85.000 byte trở lên vào Large Object Heap (LOH), chỉ thu gom cùng Gen2 và mặc định không bị nén, dễ phân mảnh. Pinned Object Heap (từ .NET 5) cho buffer cần ghim.
+##### GC và cấp phát
+.NET GC chia heap theo thế hệ: Gen0 (đối tượng mới, thu gom rẻ), Gen1 (đệm), Gen2 (sống lâu, thu gom đắt), dựa trên giả thuyết phần lớn đối tượng chết trẻ. Đối tượng từ 85.000 byte vào Large Object Heap, chỉ thu gom cùng Gen2 và mặc định không bị nén, dễ phân mảnh.
+- **Server GC** (mặc định cho ASP.NET Core): mỗi core một heap và một luồng GC, thông lượng cao hơn. Từ .NET 9, DATAS bật mặc định: số heap điều chỉnh theo tải, giảm bộ nhớ khi tải thấp.
+- **Workstation GC**: một heap, hợp ứng dụng client.
 
-- **Workstation GC**: một heap, hợp cho ứng dụng desktop.
-- **Server GC**: mỗi core một heap và một luồng GC, thông lượng cao hơn, mặc định cho ASP.NET Core. Từ .NET 9, DATAS (Dynamic Adaptation To Application Sizes) bật mặc định với Server GC: số heap điều chỉnh theo tải, giảm bộ nhớ khi tải thấp.
-- Background GC cho Gen2 chạy đồng thời với code ứng dụng, giảm thời gian dừng.
-
-Cấp phát nhiều → GC chạy nhiều → CPU và pause tăng, p99 xấu. Cách giảm:
+Cấp phát nhiều thì GC chạy nhiều, CPU và thời gian dừng tăng, p99 xấu. Cách giảm:
 
 ```csharp
-// Span<T>: cắt chuỗi/mảng không cấp phát
-ReadOnlySpan<char> line = "1001;A;45";
-int sep = line.IndexOf(';');
-int questionId = int.Parse(line[..sep]);
+ReadOnlySpan<char> line = "1001;A;45";            // Span: cắt chuỗi không cấp phát
+int questionId = int.Parse(line[..line.IndexOf(';')]);
 
-// ArrayPool<T>: mượn buffer thay vì new byte[] mỗi request
-byte[] buffer = ArrayPool<byte>.Shared.Rent(64 * 1024);
-try { /* dùng buffer, chú ý độ dài thật có thể lớn hơn yêu cầu */ }
+byte[] buffer = ArrayPool<byte>.Shared.Rent(64 * 1024);   // mượn buffer thay vì new
+try { /* độ dài thật có thể lớn hơn yêu cầu */ }
 finally { ArrayPool<byte>.Shared.Return(buffer); }
 ```
 
-- `Span<T>`/`ReadOnlySpan<T>` là kiểu `ref struct` chỉ sống trên stack, trỏ vào vùng nhớ có sẵn (mảng, chuỗi, `stackalloc`); không dùng được qua `await`. `Memory<T>` dùng được trong code async.
-- `ObjectPool<T>` (Microsoft.Extensions.ObjectPool) cho đối tượng đắt khởi tạo (`StringBuilder` lớn).
-- Tránh boxing, LINQ trong vòng lặp nóng, closure không cần thiết, chuỗi nối trong vòng lặp; `string.Create`, `StringBuilder`.
+`Span<T>` là `ref struct`, chỉ sống trên stack, không dùng qua `await`; code async dùng `Memory<T>`. `ObjectPool<T>` cho đối tượng đắt khởi tạo. System.Text.Json source generator sinh code serialize lúc build, nhanh hơn, ít cấp phát, và bắt buộc cho Native AOT.
 
-#### Serialization
-- System.Text.Json source generator: sinh code serialize lúc build thay cho reflection lúc chạy, nhanh hơn, ít cấp phát, cần cho Native AOT.
+##### Đo trước khi tối ưu
+- `dotnet-counters`: số liệu thời gian thực (CPU, GC, thread pool, exception/s).
+- `dotnet-trace`: CPU sampling, sự kiện GC; mở bằng PerfView, Visual Studio hoặc speedscope.
+- `dotnet-dump`/`dotnet-gcdump`: xem heap, tìm rò rỉ, xem stack mọi thread khi treo.
+- BenchmarkDotNet với `[MemoryDiagnoser]` cho micro-benchmark có warmup và thống kê.
 
-```csharp
-[JsonSerializable(typeof(ExamPaper))]
-[JsonSerializable(typeof(List<RankItem>))]
-internal partial class AppJsonContext : JsonSerializerContext { }
+##### Khởi động nhanh
+ReadyToRun biên dịch trước một phần, giảm JIT lúc khởi động. Native AOT biên dịch toàn bộ thành mã máy: khởi động nhanh, bộ nhớ thấp; ASP.NET Core hỗ trợ từ .NET 8 cho minimal API và gRPC, không hỗ trợ MVC, thư viện dùng reflection động có thể không chạy. Hợp cho function, sidecar, service cần scale-out nhanh.
 
-builder.Services.ConfigureHttpJsonOptions(o =>
-    o.SerializerOptions.TypeInfoResolverChain.Insert(0, AppJsonContext.Default));
-```
+#### Cách show off
+Việc thật bạn có ở mảng runtime là nâng cấp hàng chục project của nhiều service lên .NET 10. Đừng biến nó thành câu chuyện hiệu năng nếu không đo; kể nó như một việc giảm rủi ro và mở đường cho các tính năng runtime mới. Phần starvation, GC: nói theo cách bạn sẽ chẩn đoán.
 
-- Protobuf (gRPC) và MessagePack: định dạng nhị phân, nhỏ và nhanh hơn JSON, cần schema/contract; hợp cho giao tiếp nội bộ và value cache lớn.
+> **Ví dụ:** "Tôi phụ trách đưa các service phía backend lên .NET 10, khoảng vài chục project. Phần khó không nằm ở đổi target framework, mà ở các thư viện dùng chung đã được tổ chức lại, nên phải sửa namespace, đăng ký DI và cấu hình cho từng service rồi chạy thật để kiểm. Tôi không nói là nâng cấp làm hệ thống nhanh hơn bao nhiêu, vì tôi không có số đo trước sau theo cùng tải. Về chẩn đoán runtime, nếu gặp API chậm dần khi tải tăng mà CPU thấp, tôi nghi thread pool bị đói do code chặn đồng bộ trên Task; tôi xem `dotnet-counters` để thấy hàng đợi thread pool dài và số thread tăng đều, rồi lấy dump xem các thread đang kẹt ở đâu. Cách sửa là async xuyên suốt, không phải tăng số thread tối thiểu."
 
-#### HTTP trong .NET
-- `IHttpClientFactory` hoặc `HttpClient` singleton với `SocketsHttpHandler.PooledConnectionLifetime` (bài 21.2).
-- HTTP/2 multiplex nhiều request trên một kết nối; HTTP/3 chạy trên QUIC (UDP), tránh head-of-line blocking ở tầng TCP, hợp mạng di động.
-- gRPC streaming cho luồng dữ liệu dài (đẩy trạng thái phòng thi).
-- Nén response bằng Brotli/Gzip (`AddResponseCompression`); nén tốn CPU, cân nhắc ở reverse proxy; không nén response HTTPS chứa bí mật lẫn dữ liệu người dùng phản chiếu (rủi ro BREACH).
+Điểm ăn điểm:
+- Triệu chứng đặc trưng của starvation: CPU thấp, latency tăng theo bậc, thread tăng đều.
+- Biết `SetMinThreads` chỉ che triệu chứng.
+- Đo bằng profiler trước khi tối ưu cấp phát; chỉ tối ưu đoạn nóng.
+- Không gắn số hiệu năng cho việc nâng cấp khi không có số đo.
 
-#### Đo
-- `dotnet-counters`: số liệu thời gian thực (CPU, GC, thread pool, request/s, exception/s).
-- `dotnet-trace`: thu trace CPU sampling, sự kiện GC; mở bằng PerfView, Visual Studio hoặc speedscope.
-- `dotnet-dump`/`dotnet-gcdump`: xem heap, tìm rò rỉ bộ nhớ, xem stack của mọi thread khi treo.
-- BenchmarkDotNet: micro-benchmark có warmup, nhiều lần lặp, thống kê, `[MemoryDiagnoser]` đo cấp phát.
-
-```csharp
-[MemoryDiagnoser]
-public class ParseBench
-{
-    private const string Line = "1001;A;45";
-    [Benchmark(Baseline = true)] public int Split() => int.Parse(Line.Split(';')[0]);
-    [Benchmark] public int Span() => int.Parse(Line.AsSpan(0, Line.IndexOf(';')));
-}
-```
-
-#### Khởi động nhanh
-- **ReadyToRun**: biên dịch trước một phần sang mã máy, giảm JIT lúc khởi động; vẫn có JIT tối ưu sau (tiered compilation).
-- **Native AOT**: biên dịch toàn bộ thành mã máy, khởi động nhanh, bộ nhớ thấp, không cần runtime cài sẵn. ASP.NET Core hỗ trợ từ .NET 8 cho minimal API và gRPC; không hỗ trợ MVC, nhiều thư viện dùng reflection động không chạy được. Hợp cho function, sidecar, service scale-out nhanh.
-
-#### Kiểm chứng
-- Thread pool queue length gần 0 trong đỉnh tải; số thread không tăng dần.
-- `% time in GC` thấp (thường dưới vài phần trăm), tốc độ cấp phát giảm sau tối ưu; p99 ổn định hơn.
-
-#### Bẫy
-- Tăng `SetMinThreads` để "sửa" starvation: che lỗi, mỗi thread tốn bộ nhớ stack.
-- Tối ưu cấp phát ở đoạn code không nóng: phức tạp hơn mà không đổi được gì. Đo trước bằng profiler.
-- Quên trả buffer về `ArrayPool`, hoặc dùng buffer sau khi đã trả: lỗi dữ liệu khó tìm.
-
-#### Câu hỏi phỏng vấn
-- **"API chậm dần khi tải tăng nhưng CPU chỉ 20%, bạn nghi gì và kiểm tra thế nào?"** Nghi thread pool starvation do sync-over-async. Kiểm tra `dotnet-counters` (queue length cao, thread count tăng dần), lấy `dotnet-dump` xem nhiều thread chặn ở `.Result`/`.Wait()`. Sửa bằng async xuyên suốt.
+#### Câu hỏi vặn
+- **"API chậm dần khi tải tăng nhưng CPU chỉ 20%, anh nghi gì?"** Nghi thread pool starvation do sync-over-async. Kiểm tra `dotnet-counters` (queue length cao, thread count tăng dần), lấy `dotnet-dump` xem nhiều thread chặn ở `.Result`/`.Wait()`. Sửa bằng async xuyên suốt.
 - **"Server GC khác Workstation GC thế nào?"** Server GC có một heap và một luồng GC mỗi core, thông lượng cao hơn, tốn bộ nhớ hơn, mặc định cho ASP.NET Core; từ .NET 9 có DATAS điều chỉnh số heap theo tải. Workstation GC một heap, hợp ứng dụng client.
-- **"Large Object Heap là gì và vì sao cần tránh cấp phát lớn liên tục?"** Đối tượng từ 85.000 byte trở lên vào LOH, chỉ thu gom cùng Gen2 và mặc định không nén, nên dễ phân mảnh và gây GC Gen2 đắt. Dùng `ArrayPool`, chia nhỏ, stream thay vì đọc cả khối.
-- **"Span<T> giúp gì và có giới hạn gì?"** Cho phép làm việc trên một đoạn của mảng, chuỗi, bộ nhớ stack mà không cấp phát. Là `ref struct` nên chỉ sống trên stack: không làm field của class, không dùng qua `await`; khi cần trong async thì dùng `Memory<T>`.
-- **"Khi nào chọn Native AOT?"** Khi khởi động nhanh và bộ nhớ thấp quan trọng: function, service scale-out theo đỉnh, sidecar. Đổi lại không có MVC, hạn chế reflection động, thư viện phải tương thích trimming; thông lượng lúc chạy lâu dài không chắc tốt hơn JIT.
+- **"Large Object Heap là gì, sao cần tránh cấp phát lớn liên tục?"** Đối tượng từ 85.000 byte vào LOH, chỉ thu gom cùng Gen2 và mặc định không nén, dễ phân mảnh và kéo theo GC Gen2 đắt. Dùng `ArrayPool`, chia nhỏ, stream thay vì đọc cả khối.
+- **"Span<T> giúp gì và có giới hạn gì?"** Làm việc trên một đoạn mảng, chuỗi hay bộ nhớ stack mà không cấp phát. Là `ref struct` nên không làm field của class, không dùng qua `await`; trong async thì dùng `Memory<T>`.
+- **"Khi nào chọn Native AOT?"** Khi khởi động nhanh và bộ nhớ thấp quan trọng: function, service scale-out theo đỉnh, sidecar. Đổi lại không có MVC, hạn chế reflection động, thư viện phải tương thích trimming; thông lượng chạy lâu dài không chắc tốt hơn JIT.
+- **"Nâng lên .NET 10 thì nhanh hơn bao nhiêu?"** Tôi không có số đo trước sau cùng tải nên không đưa con số. Lý do nâng là hỗ trợ dài hạn, bản vá bảo mật và các cải tiến runtime; nếu cần chứng minh hiệu năng, tôi sẽ chạy cùng một kịch bản load test trên hai phiên bản.
+- **"Có nên tăng ThreadPool.SetMinThreads cho nhanh?"** Chỉ như biện pháp tạm khi đang sự cố. Nó che triệu chứng, mỗi thread tốn bộ nhớ stack, và lỗi gốc (code chặn đồng bộ) vẫn còn đó.
 
-#### Tóm tắt
+#### Bẫy cần tránh
+- Tối ưu cấp phát ở đoạn code không nóng: phức tạp hơn mà không đổi được gì.
+- Quên trả buffer về `ArrayPool` hoặc dùng buffer sau khi đã trả.
+- Nhận nâng cấp phiên bản là "tối ưu hiệu năng" khi không có số đo.
+
+#### Nhớ nhanh
 - Sync-over-async gây thread pool starvation; sửa bằng async xuyên suốt.
 - GC thế hệ; LOH từ 85.000 byte; Server GC mặc định cho web, DATAS từ .NET 9.
 - Giảm cấp phát: `Span<T>`, `ArrayPool<T>`, object pool, JSON source generator.
 - Đo bằng `dotnet-counters`, `dotnet-trace`, `dotnet-dump`, BenchmarkDotNet trước khi tối ưu.
-- Native AOT, ReadyToRun cho khởi động nhanh.
 
 #### Bài tập
-1. Tìm lỗi: `public IActionResult Get(int id) { var r = _service.GetAsync(id).Result; return Ok(r); }` và sửa.
+1. Tìm lỗi và sửa: `public IActionResult Get(int id) { var r = _service.GetAsync(id).Result; return Ok(r); }`.
    **Đáp án:** Sync-over-async chặn thread pool. Sửa: `public async Task<IActionResult> Get(int id, CancellationToken ct) { var r = await _service.GetAsync(id, ct); return Ok(r); }`.
-2. Viết benchmark so sánh `string.Split` và cách dùng `Span` để lấy phần tử đầu của chuỗi "1001;A;45"; dự đoán kết quả cột Allocated.
-   **Đáp án:** Như mẫu trong bài; `Split` cấp phát mảng và 3 chuỗi (khoảng trên 100 byte), cách dùng `Span` cấp phát 0 byte.
-3. Liệt kê ba counter cần xem khi nghi vấn đề GC.
-   **Đáp án:** `% Time in GC`, Allocation Rate, Gen 0/1/2 GC Count (thêm GC Heap Size, LOH Size).
+2. Liệt kê ba counter cần xem khi nghi vấn đề GC.
+   **Đáp án:** `% Time in GC`, allocation rate, số lần GC Gen 0/1/2 (thêm kích thước heap, LOH).
 
 ### Bài 23.6. Mạng và API
 
-#### Mục tiêu
-- Sau bài này, bạn giải thích được chi phí của kết nối mới (TCP, TLS) và cách tái sử dụng.
-- Bạn thiết kế được API có payload nhỏ và phân trang bắt buộc; xử lý được N+1 trong GraphQL.
-- Bạn ước lượng được latency theo khoảng cách và lập ngân sách latency cho từng chặng.
+#### Kiến thức
+Mỗi lời gọi qua mạng có một chi phí cố định không phụ thuộc vào code của bạn. Thiết kế API tốt là giảm số lần phải trả chi phí đó và giảm lượng dữ liệu phải chở.
 
-#### Chi phí kết nối
-Một request HTTPS trên kết nối mới tốn: TCP handshake (1 RTT), TLS 1.3 handshake (1 RTT; TLS 1.2 là 2 RTT), rồi mới tới request (1 RTT). Với RTT 30 ms, kết nối mới tốn thêm 60 ms trước khi gửi byte dữ liệu đầu tiên, chưa kể CPU cho mã hoá khoá công khai.
-- **Keep-alive**: giữ kết nối mở để dùng lại cho nhiều request. Đặt timeout keep-alive ở client ngắn hơn ở server/load balancer, tránh gửi request vào kết nối server vừa đóng.
-- **TLS session resumption**: dùng lại khoá phiên đã thương lượng, bỏ phần tốn CPU; TLS 1.3 có 0-RTT nhưng dữ liệu 0-RTT có thể bị phát lại (replay), chỉ dùng cho request idempotent.
-- HTTP/2 multiplex nhiều request trên một kết nối; HTTP/3/QUIC gộp handshake transport và TLS.
+##### Chi phí kết nối
+Một request HTTPS trên kết nối mới tốn TCP handshake (1 RTT), TLS 1.3 (1 RTT; TLS 1.2 là 2 RTT), rồi mới tới request. RTT 30 ms thì kết nối mới tốn thêm khoảng 60 ms trước byte dữ liệu đầu tiên, chưa kể CPU mã hoá. Keep-alive giữ kết nối để dùng lại (timeout ở client ngắn hơn ở server); TLS session resumption bỏ phần đắt của handshake; 0-RTT của TLS 1.3 có thể bị phát lại nên chỉ cho request idempotent. HTTP/2 multiplex nhiều request trên một kết nối; HTTP/3 chạy trên QUIC, tránh head-of-line blocking ở tầng TCP.
 
-#### Payload
-- Chỉ trả trường cần dùng; DTO riêng cho từng màn hình thay vì trả nguyên entity.
-- Nén (Brotli/Gzip) cho JSON lớn; JSON lặp nhiều tên trường nén rất tốt.
-- Định dạng nhị phân (Protobuf) cho giao tiếp nội bộ.
-- Ảnh, file: trả URL tới object storage/CDN, không trả base64 trong JSON.
+##### Payload
+Chỉ trả trường cần, DTO theo từng màn hình; nén Brotli/Gzip cho JSON lớn; Protobuf cho giao tiếp nội bộ; ảnh và file trả URL tới CDN, không nhúng base64 vào JSON.
 
-#### Phân trang bắt buộc
-Mọi API trả danh sách phải có giới hạn. Hai kiểu:
-- **Offset** (`OFFSET 10000 ROWS FETCH NEXT 20`): đơn giản, nhảy trang được, nhưng DB vẫn phải đọc và bỏ qua 10.000 dòng; trang càng sâu càng chậm; dữ liệu thay đổi giữa hai lần gọi gây trùng hoặc sót.
-- **Keyset (cursor)**: nhớ khoá của dòng cuối trang trước, lấy các dòng sau nó; dùng index seek nên trang nào cũng nhanh như nhau.
+##### Phân trang bắt buộc
+Mọi API trả danh sách phải có giới hạn, và server đặt `pageSize` tối đa.
+- **Offset** (`OFFSET 10000 ROWS FETCH NEXT 20`): nhảy trang được, nhưng DB phải đọc rồi bỏ qua 10.000 dòng; trang càng sâu càng chậm, dữ liệu đổi giữa hai lần gọi gây trùng hoặc sót.
+- **Keyset**: nhớ khoá của dòng cuối trang trước, lấy các dòng sau nó bằng index seek, trang nào cũng nhanh như nhau.
+
+T-SQL không hỗ trợ so sánh bộ giá trị kiểu `(a, b) < (@x, @y)`, nên phải viết điều kiện tách ra. Cột sắp xếp không duy nhất thì luôn thêm khoá phụ để tie-break:
 
 ```sql
 SELECT TOP (20) SubmissionId, UserId, Score, SubmittedAt
@@ -1543,64 +1306,64 @@ ORDER BY SubmittedAt DESC, SubmissionId DESC;
 -- index (ExamId, SubmittedAt DESC, SubmissionId DESC) INCLUDE (UserId, Score)
 ```
 
-Server đặt `pageSize` tối đa, không tin giá trị client gửi.
+##### N+1 và DataLoader
+Resolver của trường con chạy một lần cho mỗi phần tử cha: 100 bài thi, mỗi bài resolve "môn học" bằng một truy vấn, thành 1 + 100 truy vấn. DataLoader gom các khoá trong một lượt thực thi thành một truy vấn `WHERE SubjectId IN (...)` và cache trong request; HotChocolate có sẵn. N+1 không riêng GraphQL: ORM lazy loading hay vòng lặp gọi API trong REST cũng vậy.
 
-#### GraphQL N+1
-Resolver của trường con chạy một lần cho mỗi phần tử cha: danh sách 100 bài thi, mỗi bài resolve "môn học" bằng một truy vấn → 1 + 100 truy vấn. DataLoader gom các khoá được yêu cầu trong cùng một lượt thực thi thành một lời gọi theo lô (`WHERE SubjectId IN (...)`) và cache trong phạm vi request. HotChocolate (.NET) có DataLoader sẵn. Cũng cần giới hạn độ sâu và độ phức tạp truy vấn để client không gửi truy vấn quá nặng. Vấn đề N+1 không riêng GraphQL: ORM lazy loading trong REST cũng gây N+1.
+##### Ngân sách latency và khoảng cách
+Ánh sáng trong cáp quang đi khoảng 200.000 km/s, mỗi 100 km thêm khoảng 1 ms RTT. Hà Nội – TP.HCM RTT thực tế thường vài chục ms; trang cần 10 request tuần tự giữa hai đầu thì riêng mạng đã vài trăm ms. Lập ngân sách latency: chia mục tiêu p99 của API cho từng chặng (gateway, service, cache, DB, dịch vụ ngoài), mỗi chặng có timeout tương ứng, tracing cho biết chặng nào vượt.
 
-#### Đa vùng và ngân sách latency
-Ánh sáng trong cáp quang đi khoảng 200.000 km/s: mỗi 100 km khoảng cách thêm khoảng 1 ms RTT, chưa tính định tuyến. Hà Nội – TP.HCM khoảng 1.100–1.200 km đường thẳng, RTT thực tế thường vài chục ms. Một trang cần 10 request tuần tự giữa hai đầu thì riêng mạng đã vài trăm ms.
+#### Cách show off
+Phát hiện thật trong đợt rà soát: service tạo `GrpcChannel` mới cho mỗi request, và trace có lỗi kết nối socket. Bạn cũng làm phần hardening cho BFF của hệ thống đăng nhập. Phần phân trang keyset và DataLoader là kiến thức, nói theo hướng thiết kế; chi tiết "T-SQL không có so sánh bộ giá trị" là điểm cộng vì nhiều người viết sai.
 
-Ngân sách latency: tách mục tiêu p99 của API thành phần cho từng chặng (gateway, service, cache, DB, dịch vụ ngoài), mỗi chặng có timeout tương ứng. Khi một chặng vượt ngân sách, biết ngay phải sửa ở đâu.
+> **Ví dụ:** "Trong trace của hệ thống thi, tôi thấy lỗi kết nối socket xuất hiện cùng lúc với một service tạo kênh gRPC mới cho mỗi request. Mỗi kênh mới là một lần bắt tay TCP và TLS, vừa tốn thời gian vừa tốn CPU cả hai phía, và socket đóng tích tụ có thể làm cạn cổng. Tôi đề xuất đăng ký client gRPC qua factory để dùng lại kênh. Ở tầng API, nguyên tắc tôi giữ là danh sách nào cũng có phân trang với giới hạn phía server; danh sách lớn thì dùng keyset thay cho offset. Khi viết keyset trên SQL Server phải tách điều kiện thành 'nhỏ hơn, hoặc bằng nhau và khoá phụ nhỏ hơn', vì T-SQL không so sánh được cả bộ giá trị như PostgreSQL."
 
-Đa vùng (multi-region): đặt dữ liệu gần người dùng, đọc từ bản sao gần nhất. Khó ở phần ghi: một vùng chính ghi (các vùng khác chịu độ trễ ghi) hoặc nhiều vùng cùng ghi (phải xử lý xung đột). Chỉ làm khi yêu cầu latency hoặc chịu lỗi cấp vùng thật sự cần.
+Điểm ăn điểm:
+- Tính được chi phí kết nối mới theo RTT.
+- Keyset đúng cú pháp T-SQL và có tie-break bằng khoá duy nhất.
+- Nhìn N+1 như một vấn đề chung, không chỉ của GraphQL.
+- Nói latency theo ngân sách từng chặng.
 
-#### Kiểm chứng
-- Số kết nối mới mỗi giây và tỉ lệ TLS resumption ở load balancer.
-- Kích thước response p95 theo endpoint; số truy vấn DB mỗi request (từ tracing).
-- Thời gian trang sâu với keyset so với offset trên dữ liệu thật.
+#### Câu hỏi vặn
+- **"Vì sao trang 5.000 chậm hơn trang 1, anh sửa thế nào?"** Offset buộc DB đọc rồi bỏ qua mọi dòng trước trang đó. Chuyển sang keyset: nhớ giá trị sắp xếp và Id của dòng cuối, lọc `WHERE SortCol < @lastSort OR (SortCol = @lastSort AND Id < @lastId)` với index đúng thứ tự, mọi trang đều là index seek. Nếu cần nhảy trang tuỳ ý thì giới hạn độ sâu.
+- **"Sao không viết WHERE (SortCol, Id) < (@a, @b) cho gọn?"** Cú pháp so sánh bộ giá trị có ở PostgreSQL nhưng T-SQL không hỗ trợ. Trên SQL Server phải tách thành điều kiện OR như trên, và kiểm tra plan vẫn ra index seek.
+- **"GraphQL N+1 là gì, DataLoader giải quyết thế nào?"** Resolver con chạy một truy vấn cho mỗi phần tử cha, 100 phần tử thành 101 truy vấn. DataLoader gom khoá trong một lượt thực thi thành một truy vấn theo lô và cache trong request.
+- **"Một kết nối HTTPS mới tốn bao lâu trước khi gửi dữ liệu?"** TCP 1 RTT cộng TLS 1.3 1 RTT (TLS 1.2 là 2 RTT), rồi mới tới request. RTT 30 ms thì thêm khoảng 60 ms, cộng CPU mã hoá. Keep-alive và session resumption tránh chi phí này.
+- **"Anh lập ngân sách latency cho API p99 300 ms thế nào?"** Chia cho từng chặng theo số đo thực tế, ví dụ gateway 20 ms, service 50 ms, cache 10 ms, DB 150 ms, dư 70 ms; timeout từng chặng theo ngân sách; tracing để thấy chặng nào vượt.
+- **"Màn hình gọi 8 API tuần tự, anh cải thiện thế nào?"** Gọi song song các API độc lập, gộp thành một API cho màn hình (BFF) trả đủ dữ liệu, hoặc cache phía client. Mỗi lời gọi tuần tự là ít nhất một RTT.
+- **"Bật 0-RTT cho mọi request có sao không?"** Dữ liệu 0-RTT có thể bị kẻ tấn công phát lại, nên chỉ dùng cho request idempotent như đọc. Nộp bài, trừ lượt thì không.
 
-#### Bẫy
-- Keyset pagination với cột sắp xếp không duy nhất mà không thêm khoá phụ: sót hoặc trùng dòng.
-- Bật 0-RTT cho request không idempotent: bị phát lại.
+#### Bẫy cần tránh
+- Keyset với cột sắp xếp không duy nhất mà không có khoá phụ: sót hoặc trùng dòng.
+- Viết keyset bằng cú pháp so sánh bộ giá trị trên SQL Server.
 - Đo latency từ máy cùng data center rồi kết luận cho người dùng ở xa.
 
-#### Câu hỏi phỏng vấn
-- **"Vì sao trang 5.000 của danh sách chậm hơn trang 1 và bạn sửa thế nào?"** Offset pagination buộc DB đọc và bỏ qua mọi dòng trước trang đó. Chuyển sang keyset: nhớ khoá dòng cuối, lọc `WHERE (SortCol, Id) < (@last...)` với index đúng thứ tự, mọi trang đều là index seek. Nếu cần nhảy trang tuỳ ý, giới hạn độ sâu.
-- **"GraphQL N+1 là gì và DataLoader giải quyết thế nào?"** Resolver con chạy một truy vấn cho mỗi phần tử cha, 100 phần tử thành 101 truy vấn. DataLoader gom khoá trong một lượt thực thi thành một truy vấn theo lô và cache trong request.
-- **"Một kết nối HTTPS mới tốn bao nhiêu thời gian trước khi gửi dữ liệu?"** TCP 1 RTT + TLS 1.3 1 RTT (TLS 1.2 là 2 RTT), sau đó mới tới request. RTT 30 ms thì tốn thêm khoảng 60 ms, cộng CPU mã hoá. Keep-alive và session resumption tránh chi phí này.
-- **"Bạn lập ngân sách latency cho API p99 300 ms thế nào?"** Chia cho từng chặng theo đo đạc thực tế, ví dụ gateway 20 ms, service 50 ms, cache 10 ms, DB 150 ms, dư 70 ms; timeout từng chặng theo ngân sách; tracing để thấy chặng nào vượt.
-
-#### Tóm tắt
+#### Nhớ nhanh
 - Kết nối mới tốn 2–3 RTT và CPU TLS; keep-alive, resumption, HTTP/2 để dùng lại.
 - Payload nhỏ: DTO theo màn hình, nén, nhị phân cho nội bộ.
-- Phân trang bắt buộc; keyset cho danh sách lớn.
-- N+1 xử lý bằng gom lô (DataLoader, `IN (...)`).
-- Khoảng 1 ms RTT mỗi 100 km; lập ngân sách latency theo chặng.
+- Phân trang bắt buộc; keyset cho danh sách lớn, T-SQL tách điều kiện OR và có tie-break.
+- N+1 xử lý bằng gom lô; latency lập ngân sách theo chặng.
 
 #### Bài tập
 1. Viết truy vấn keyset lấy 20 bài nộp tiếp theo theo `Score DESC, SubmissionId DESC`, biết điểm và Id của dòng cuối trang trước.
-   **Đáp án:** `WHERE ExamId = @ExamId AND (Score < @LastScore OR (Score = @LastScore AND SubmissionId < @LastId)) ORDER BY Score DESC, SubmissionId DESC`, `TOP (20)`, index `(ExamId, Score DESC, SubmissionId DESC)`.
-2. Một màn hình gọi 8 API tuần tự, RTT 40 ms, mỗi API xử lý 20 ms, dùng lại kết nối. Tính thời gian tối thiểu và đề xuất cải thiện.
-   **Đáp án:** 8 × (40 + 20) = 480 ms. Gọi song song các API độc lập, gộp thành một API (BFF) trả đủ dữ liệu màn hình, hoặc cache phía client.
-3. Kể hai cách giảm payload của API trả danh sách đề thi 2 MB.
-   **Đáp án:** DTO chỉ chứa trường danh sách cần (bỏ nội dung câu hỏi, chỉ trả khi mở đề), phân trang, nén Brotli; ảnh trả URL CDN.
+   **Đáp án:** `SELECT TOP (20) ... WHERE ExamId = @ExamId AND (Score < @LastScore OR (Score = @LastScore AND SubmissionId < @LastId)) ORDER BY Score DESC, SubmissionId DESC`, index `(ExamId, Score DESC, SubmissionId DESC)`.
+2. Màn hình gọi 8 API tuần tự, RTT 40 ms, mỗi API xử lý 20 ms, dùng lại kết nối. Tính thời gian tối thiểu.
+   **Đáp án:** 8 × (40 + 20) = 480 ms. Gọi song song các API độc lập hoặc gộp thành một API cho màn hình.
 
 ### Bài 23.7. Performance engineering
 
-#### Mục tiêu
-- Sau bài này, bạn dùng được RED, USE, SLI/SLO và error budget để định nghĩa "đủ nhanh".
-- Bạn đọc được percentile từ histogram và giải thích vì sao không dùng trung bình.
-- Bạn thiết kế được load test (soak, spike, stress) và áp dụng lý thuyết hàng đợi, Amdahl, USL vào capacity planning.
+#### Kiến thức
+"Đủ nhanh" phải được định nghĩa bằng số trước khi tối ưu, nếu không sẽ không biết khi nào dừng. Bài này là bộ công cụ để định nghĩa, đo và dự báo.
 
-#### Metric: RED và USE
-- **RED** cho service: Rate (request/giây), Errors (tỉ lệ lỗi), Duration (phân bố thời gian xử lý).
-- **USE** cho tài nguyên (CPU, đĩa, mạng, pool, hàng đợi): Utilization (% thời gian bận), Saturation (mức xếp hàng, ví dụ run queue, queue length), Errors.
-- **SLI** (chỉ số đo được, ví dụ % request nộp bài thành công dưới 500 ms), **SLO** (mục tiêu cho SLI, ví dụ 99,9% trong 30 ngày), **error budget** (phần được phép hỏng: 0,1% của 30 ngày ≈ 43,2 phút). Hết budget thì ưu tiên ổn định hơn tính năng mới.
-- Cảnh báo theo burn rate: tốc độ tiêu budget. Burn rate 14,4 trong 1 giờ nghĩa là tiêu khoảng 2% budget 30 ngày trong 1 giờ; cảnh báo nhiều cửa sổ (nhanh và chậm) giảm báo động giả.
+##### RED, USE, SLO
+- **RED** cho service: Rate, Errors, Duration (phân bố thời gian xử lý).
+- **USE** cho tài nguyên: Utilization, Saturation (mức xếp hàng), Errors.
+- **SLI** là chỉ số đo được (% request nộp bài thành công dưới 500 ms), **SLO** là mục tiêu cho nó (99,9% trong 30 ngày), **error budget** là phần được phép hỏng (0,1% của 30 ngày khoảng 43 phút). Hết budget thì ưu tiên ổn định hơn tính năng mới.
+- Cảnh báo theo **burn rate**, tốc độ tiêu budget: burn rate 14,4 trong 1 giờ nghĩa là tiêu khoảng 2% budget 30 ngày trong 1 giờ. Dùng nhiều cửa sổ (nhanh và chậm) để giảm báo động giả.
+
+SLO latency viết dạng tỉ lệ request tốt dễ tính từ histogram, và cộng gộp được giữa các pod:
 
 ```promql
-# Tỉ lệ request chậm hơn 500 ms trong 5 phút
+# Tỉ lệ request /exam/submit chậm hơn 500 ms trong 5 phút
 1 - (
   sum(rate(http_server_request_duration_seconds_bucket{route="/exam/submit",le="0.5"}[5m]))
   /
@@ -1608,76 +1371,64 @@ Ngân sách latency: tách mục tiêu p99 của API thành phần cho từng ch
 )
 ```
 
-#### Percentile, không phải trung bình
-Trung bình che mất đuôi: 99 request 10 ms và 1 request 5 giây có trung bình khoảng 60 ms, nhưng 1% người dùng chờ 5 giây. Một trang gọi 20 API thì xác suất ít nhất một lời gọi rơi vào 1% chậm nhất là 1 − 0,99^20 ≈ 18%: p99 của từng API trở thành trải nghiệm thường gặp của trang. Dùng p50, p95, p99, p99,9 từ histogram.
+> **Cảnh báo:** Ngưỡng `le` phải trùng một biên bucket có thật. Histogram `http.server.request.duration` của ASP.NET Core (.NET 8+) dùng bộ biên mặc định 0,005; 0,01; 0,025; 0,05; 0,075; 0,1; 0,25; 0,5; 0,75; 1; 2,5; 5; 7,5; 10 giây. Muốn SLO ở 300 ms thì phải tự cấu hình thêm biên 0,3, nếu không truy vấn với `le="0.3"` không trả về gì.
 
-Không lấy trung bình của các percentile (p99 của từng instance cộng lại chia đôi là sai); gộp histogram rồi mới tính percentile. Công cụ load test nhiều khi mắc lỗi coordinated omission: client chờ request chậm xong mới gửi request tiếp, nên số request chậm bị đếm thiếu. Dùng công cụ sinh tải theo tốc độ cố định (open model, như `constant-arrival-rate` của k6).
+##### Percentile, không phải trung bình
+99 request 10 ms và 1 request 5 giây có trung bình khoảng 60 ms, nhưng 1% người dùng chờ 5 giây. Trang gọi 20 API thì xác suất ít nhất một lời gọi rơi vào 1% chậm nhất là 1 − 0,99^20, khoảng 18%: p99 của từng API thành trải nghiệm thường gặp của trang. Không lấy trung bình các percentile; gộp histogram rồi mới tính. Công cụ load test dạng closed model hay mắc coordinated omission (chờ request chậm xong mới gửi tiếp, nên đếm thiếu request chậm); dùng tải theo tốc độ đến cố định như `constant-arrival-rate` của k6.
 
-#### Quan sát
-- **Distributed tracing** (OpenTelemetry): một trace đi qua mọi service, thấy chặng nào chậm. **Exemplar** gắn trace ID vào điểm metric, từ đồ thị p99 bấm thẳng tới trace của request chậm.
-- **Continuous profiling** (Pyroscope, Parca): lấy mẫu CPU, cấp phát liên tục trên production với chi phí thấp; so sánh profile trước và sau deploy.
+##### Load test
+- **Load**: tải kỳ vọng, xác nhận SLO. **Stress**: tăng tới khi hỏng, xem hệ thống gãy sạch hay sập dây chuyền.
+- **Spike**: tăng đột ngột như đầu ca thi, kiểm tra autoscale, cache lạnh, pool. **Soak**: tải vừa nhiều giờ, tìm rò rỉ.
 
-#### Load test
-- **Load**: tải kỳ vọng, xác nhận SLO.
-- **Stress**: tăng dần tới khi hỏng, tìm điểm gãy và cách hệ thống gãy (có từ chối sạch hay sập dây chuyền).
-- **Spike**: tăng đột ngột (đầu ca thi), kiểm tra autoscale, cache lạnh, pool.
-- **Soak**: tải vừa trong nhiều giờ, tìm rò rỉ bộ nhớ, kết nối, tăng dần latency.
-
-Chạy trên dữ liệu cỡ production (bảng nhỏ thì mọi thứ nằm trong RAM, kết quả vô nghĩa), phân bố tham số giống thật (không phải cùng một user, cùng một đề). Cấu hình k6 cho kịch bản spike, dạng tốc độ đến cố định:
+Chạy trên dữ liệu cỡ production với phân bố tham số giống thật (không phải cùng một user, cùng một đề, vì như vậy cache hit 100%).
 
 ```json
 {
-  "scenarios": {
-    "exam_start_spike": {
-      "executor": "ramping-arrival-rate",
-      "startRate": 100, "timeUnit": "1s",
-      "preAllocatedVUs": 2000, "maxVUs": 10000,
-      "stages": [
-        { "target": 100,  "duration": "2m" },
-        { "target": 5000, "duration": "30s" },
-        { "target": 5000, "duration": "5m" },
-        { "target": 100,  "duration": "1m" }
-      ]
-    }
-  },
+  "scenarios": { "exam_start_spike": {
+    "executor": "ramping-arrival-rate", "startRate": 100, "timeUnit": "1s",
+    "preAllocatedVUs": 2000, "maxVUs": 10000,
+    "stages": [ { "target": 100, "duration": "2m" }, { "target": 5000, "duration": "30s" },
+                { "target": 5000, "duration": "5m" }, { "target": 100, "duration": "1m" } ] } },
   "thresholds": { "http_req_duration{name:submit}": ["p(99)<500"], "http_req_failed": ["rate<0.001"] }
 }
 ```
 
-#### Lý thuyết hàng đợi và capacity planning
-Với hàng đợi đơn giản (M/M/1), thời gian phản hồi R = S / (1 − U), S là thời gian phục vụ, U là mức sử dụng. U = 50% → R = 2S; U = 80% → 5S; U = 90% → 10S; U = 95% → 20S. Vì vậy vượt khoảng 70–80% utilization thì latency tăng vọt; capacity planning để đỉnh nằm dưới ngưỡng đó.
+##### Hàng đợi và capacity planning
+Với hàng đợi đơn giản (M/M/1), thời gian phản hồi R = S / (1 − U): U 50% thì R = 2S, 80% thì 5S, 90% thì 10S. Vì vậy vượt khoảng 70–80% utilization thì latency tăng vọt. Amdahl: phần song song hoá được là p thì speedup tối đa là 1 / (1 − p), p = 95% thì tối đa gấp 20. Universal Scalability Law thêm chi phí đồng bộ giữa các node, khiến thông lượng có điểm cực đại rồi giảm: thêm máy có thể làm chậm đi. Capacity planning: đo thông lượng mỗi instance ở utilization mục tiêu, dự báo đỉnh, cộng dư cho mất một node.
 
-- **Amdahl's law**: speedup tối đa với N bộ xử lý = 1 / ((1 − p) + p/N), p là phần song song hoá được. p = 95% thì dù N vô hạn cũng chỉ nhanh gấp 20.
-- **Universal Scalability Law**: C(N) = N / (1 + α(N − 1) + βN(N − 1)); α là tranh chấp (phần tuần tự), β là chi phí đồng bộ giữa các node (coherency). β > 0 thì thông lượng có điểm cực đại rồi giảm khi thêm node: thêm máy có thể làm chậm đi.
-- Capacity planning: đo thông lượng mỗi instance ở mức utilization mục tiêu, dự báo đỉnh (số thí sinh × tỉ lệ đồng thời × request mỗi người), cộng dư cho mất một vùng/node.
+##### Chặn hồi quy
+Benchmark gate trong CI so với baseline; load test ngắn trên staging trước release; Query Store "Regressed Queries" sau mỗi lần deploy DB; chaos engineering có kiểm soát (giết instance, làm chậm DB) để kiểm tra timeout, retry, circuit breaker chạy đúng thiết kế.
 
-#### Chặn hồi quy và chaos
-- CI có benchmark gate (BenchmarkDotNet so với baseline, vượt ngưỡng thì fail), load test ngắn trên môi trường staging trước release.
-- Query Store "Regressed Queries" sau mỗi deploy DB.
-- Chaos engineering: chủ động gây lỗi có kiểm soát (giết instance, làm chậm DB, cắt mạng) để kiểm tra timeout, retry, circuit breaker hoạt động đúng như thiết kế; bắt đầu ở staging, phạm vi nhỏ, có nút dừng.
+#### Cách show off
+Phần thật: hệ thống dùng Elastic APM, và câu chuyện API bắt đầu thi có số trước sau lấy từ trace. SLO, error budget, load test bằng k6 ở dự án bạn chưa làm. Điểm mạnh nhất bạn có thể thể hiện là sự chính xác về số liệu: biết con số mình có là loại gì và muốn có p95 thật thì đo thế nào.
 
-#### Kiểm chứng
-- Mỗi API quan trọng có SLI, SLO, dashboard RED và cảnh báo burn rate.
-- Báo cáo load test ghi rõ: kịch bản, dữ liệu, tốc độ đến, p50/p95/p99, tỉ lệ lỗi, tài nguyên nghẽn đầu tiên.
+> **Ví dụ:** "Số liệu tôi có cho API bắt đầu thi là trace điển hình trước và sau bản sửa trên Elastic APM, nên tôi không gọi nó là p95. Nếu làm lại cho đúng, tôi sẽ định nghĩa SLI là tỉ lệ request bắt đầu thi xong dưới một ngưỡng, lấy từ histogram độ trễ, và đặt SLO trên tỉ lệ đó; cần để ý ngưỡng phải trùng biên bucket, vì bộ biên mặc định của ASP.NET Core có 0,25 và 0,5 giây chứ không có 0,3. Trước mùa thi, tôi muốn có một bài load test dạng spike theo tốc độ đến cố định, trên dữ liệu cỡ thật, để thấy tài nguyên nào nghẽn đầu tiên. Phần SLO và load test này dự án chưa có, tôi trình bày là cách tôi sẽ làm."
 
-#### Bẫy
-- Load test chỉ một endpoint với một tham số: cache hit 100%, kết quả lạc quan vô căn cứ.
+Điểm ăn điểm:
+- Phân biệt trace điển hình, trung bình và percentile.
+- Biết giới hạn của histogram: ngưỡng phải trùng biên bucket.
+- Nói được coordinated omission và vì sao dùng open model.
+- R = S / (1 − U) để giải thích vì sao không chạy CPU sát 100%.
+
+#### Câu hỏi vặn
+- **"Vì sao không dùng latency trung bình?"** Trung bình che đuôi phân bố. Người dùng gặp đuôi thường xuyên vì một trang gọi nhiều API: 20 lời gọi thì khoảng 18% lượt tải trang chạm ít nhất một request p99. Dùng percentile từ histogram.
+- **"Error budget là gì, dùng để làm gì?"** Phần không đạt SLO được phép trong một khoảng thời gian, SLO 99,9% trong 30 ngày cho phép khoảng 43 phút. Còn budget thì phát hành nhanh; tiêu nhanh thì cảnh báo; hết budget thì dừng tính năng mới để ưu tiên ổn định.
+- **"Vì sao latency tăng vọt khi CPU vượt 80%?"** Theo lý thuyết hàng đợi, thời gian phản hồi xấp xỉ S / (1 − U): 80% đã gấp 5 lần thời gian phục vụ, 90% gấp 10 lần. Request đến ngẫu nhiên nên hàng đợi dài ra rất nhanh khi gần bão hoà.
+- **"Anh load test cho kỳ thi thế nào?"** Kịch bản spike theo tốc độ đến cố định cho đầu ca và cuối ca, dữ liệu cỡ production với phân bố user và đề thật; ngưỡng p99 và tỉ lệ lỗi; theo dõi tài nguyên nghẽn đầu tiên. Kèm soak test vài giờ để tìm rò rỉ.
+- **"Con số trước sau anh nói là p95 à?"** Không, đó là trace điển hình trên APM. Muốn có p95, tôi lấy histogram độ trễ của API trong cùng khung giờ thi trước và sau bản sửa, hoặc chạy cùng kịch bản load test hai lần.
+- **"SLO 300 ms mà histogram không có bucket 0,3 thì sao?"** Truy vấn `le="0.3"` không khớp chuỗi nào. Tôi cấu hình biên bucket cho instrument đó (ví dụ qua `AddView` của OpenTelemetry) để có biên 0,3, hoặc chọn ngưỡng SLO trùng biên có sẵn.
+- **"USL nói gì mà Amdahl không nói?"** Amdahl chỉ có phần tuần tự nên thông lượng tiệm cận một trần. USL thêm chi phí đồng bộ giữa các node, khiến thông lượng đạt cực đại rồi giảm khi thêm node, giải thích vì sao thêm máy có thể làm chậm đi.
+
+#### Bẫy cần tránh
+- Load test một endpoint với một tham số: cache hit 100%, kết quả lạc quan vô căn cứ.
 - Báo cáo p99 từ công cụ closed model mà không xét coordinated omission.
-- Đặt SLO 100%: không còn error budget, mọi thay đổi đều bị coi là rủi ro.
+- Gọi trace điển hình là p95; đặt SLO 100%.
 
-#### Câu hỏi phỏng vấn
-- **"Vì sao không dùng latency trung bình để đánh giá API?"** Trung bình che đuôi phân bố; vài request rất chậm không làm trung bình đổi nhiều. Người dùng gặp đuôi thường xuyên vì một trang gọi nhiều API: 20 lời gọi thì khoảng 18% lượt tải trang chạm ít nhất một request p99. Dùng percentile từ histogram.
-- **"Error budget là gì và dùng để làm gì?"** Phần không đạt SLO được phép trong một khoảng thời gian, ví dụ SLO 99,9% trong 30 ngày cho phép khoảng 43 phút. Còn budget thì được phát hành nhanh; tiêu nhanh (burn rate cao) thì cảnh báo, hết budget thì dừng tính năng mới để ưu tiên ổn định.
-- **"Vì sao latency tăng vọt khi CPU vượt 80%?"** Theo lý thuyết hàng đợi, thời gian phản hồi xấp xỉ S / (1 − U): U 80% đã gấp 5 lần thời gian phục vụ, 90% gấp 10 lần. Request đến ngẫu nhiên nên hàng đợi dài ra rất nhanh khi gần bão hoà.
-- **"Bạn load test cho kỳ thi thế nào?"** Kịch bản spike theo tốc độ đến cố định mô phỏng đầu ca và cuối ca, trên dữ liệu cỡ production với phân bố user, đề thật; ngưỡng p99 và tỉ lệ lỗi; theo dõi tài nguyên nghẽn đầu tiên (pool, DB, CPU, thread pool). Kèm soak test vài giờ để tìm rò rỉ.
-- **"Universal Scalability Law nói gì mà Amdahl không nói?"** Amdahl chỉ có phần tuần tự nên thông lượng tiệm cận một mức trần. USL thêm chi phí đồng bộ giữa các node (β), khiến thông lượng đạt cực đại rồi giảm khi thêm node. Giải thích vì sao thêm máy có thể làm hệ thống chậm đi.
-
-#### Tóm tắt
+#### Nhớ nhanh
 - RED cho service, USE cho tài nguyên; SLI, SLO, error budget, cảnh báo burn rate.
-- Dùng percentile từ histogram; gộp histogram trước khi tính percentile; cẩn thận coordinated omission.
-- Load test đủ bốn dạng, dữ liệu cỡ thật, tốc độ đến cố định.
+- Percentile từ histogram; gộp histogram trước khi tính; ngưỡng phải trùng biên bucket.
+- Load test bốn dạng, dữ liệu cỡ thật, tốc độ đến cố định.
 - R = S / (1 − U): giữ đỉnh dưới 70–80% utilization.
-- Chặn hồi quy trong CI; chaos engineering có kiểm soát.
 
 #### Bài tập
 1. SLO 99,95% trong 30 ngày. Tính error budget theo phút.
@@ -1685,156 +1436,141 @@ Với hàng đợi đơn giản (M/M/1), thời gian phản hồi R = S / (1 −
 2. Thời gian phục vụ 20 ms. Tính thời gian phản hồi ở utilization 60%, 85%, 95% theo M/M/1.
    **Đáp án:** 20 / 0,4 = 50 ms; 20 / 0,15 ≈ 133 ms; 20 / 0,05 = 400 ms.
 3. 70% công việc song song hoá được. Speedup tối đa với 8 core và với vô hạn core theo Amdahl?
-   **Đáp án:** 1 / (0,3 + 0,7/8) = 1 / 0,3875 ≈ 2,58 lần; vô hạn core: 1 / 0,3 ≈ 3,33 lần.
+   **Đáp án:** 1 / (0,3 + 0,7/8) ≈ 2,58 lần; vô hạn core: 1 / 0,3 ≈ 3,33 lần.
 
 ### Bài 23.8. Vòng đời dữ liệu và chi phí
 
-#### Mục tiêu
-- Sau bài này, bạn thiết kế được phân tầng dữ liệu nóng, ấm, lạnh với TTL và nén phù hợp.
-- Bạn tính được chi phí trên mỗi request và biết các đòn bẩy giảm chi phí chính.
-- Bạn right-size được máy và DB dựa trên số đo.
+#### Kiến thức
+Mọi tối ưu cuối cùng quy về tiền: máy, license, dung lượng, băng thông. Senior được kỳ vọng nói chuyện chi phí bằng số theo đơn vị nghiệp vụ, không chỉ bằng CPU.
 
-#### Phân tầng nóng, ấm, lạnh
-| Tầng | Đặc điểm truy cập | Nơi lưu điển hình | Ví dụ |
+##### Phân tầng nóng, ấm, lạnh
+| Tầng | Truy cập | Nơi lưu | Ví dụ |
 |---|---|---|---|
-| Nóng | Đọc/ghi liên tục, cần ms | RAM, Redis, SSD, bảng chính | Ca thi đang diễn ra, cấu hình sự kiện |
-| Ấm | Đọc thỉnh thoảng, chấp nhận chậm hơn | Bảng archive, replica, ổ rẻ hơn | Kết quả năm học hiện tại |
-| Lạnh | Hiếm khi đọc, giữ cho đối soát, pháp lý | Object storage (tầng cool/archive), file Parquet, backup | Log đáp án các năm trước |
+| Nóng | Đọc ghi liên tục, cần mili-giây | RAM, Redis, SSD, bảng chính | Ca thi đang diễn ra, cấu hình sự kiện |
+| Ấm | Đọc thỉnh thoảng | Bảng archive, replica, ổ rẻ hơn | Kết quả năm học hiện tại |
+| Lạnh | Hiếm khi đọc, giữ cho đối soát, pháp lý | Object storage tầng cool/archive, Parquet, backup | Log đáp án các năm trước |
 
-Dữ liệu di chuyển theo tuổi: partition switching (bài 20.3), job xuất ra Parquet, lifecycle rule của object storage tự chuyển tầng sau N ngày. Tầng lưu trữ archive của cloud rất rẻ nhưng lấy lại mất nhiều giờ và tốn phí truy xuất; chỉ đưa vào đó dữ liệu gần như không bao giờ đọc.
+Dữ liệu di chuyển theo tuổi bằng partition switching, job xuất Parquet, lifecycle rule của object storage. Tầng archive của cloud rất rẻ nhưng lấy lại mất nhiều giờ và tốn phí truy xuất; chỉ đưa vào đó dữ liệu gần như không bao giờ đọc. Mọi tầng đều có TTL hoặc retention: key Redis, bảng log, index Elasticsearch (Index Lifecycle Management), file tạm trên object storage, backup.
 
-#### TTL ở mọi tầng
-- Redis: mọi key cache có TTL.
-- Bảng log: retention policy và job dọn (bài 20.3).
-- Elasticsearch/OpenSearch: index theo ngày, Index Lifecycle Management xoá index cũ.
-- Object storage: lifecycle rule xoá file tạm, bản export sau N ngày.
-- Backup: chính sách giữ (ví dụ log 7 ngày, full hằng tuần 3 tháng, hằng tháng 1 năm).
-
-#### Nén
-- SQL Server row/page compression: giảm dung lượng và I/O (thường nhiều chục phần trăm với page compression), đổi lại tốn CPU khi đọc ghi. Ước lượng trước bằng `sp_estimate_data_compression_savings`.
+##### Nén
+Row/page compression của SQL Server giảm dung lượng và số trang đọc, đổi lại tốn CPU khi đọc ghi. Ước lượng trước, bật trên partition cũ trước:
 
 ```sql
 EXEC sp_estimate_data_compression_savings
      @schema_name = 'dbo', @object_name = 'AnswerLog',
      @index_id = NULL, @partition_number = NULL, @data_compression = 'PAGE';
-
 ALTER INDEX ALL ON dbo.AnswerLog REBUILD PARTITION = 1 WITH (DATA_COMPRESSION = PAGE);
 ```
 
-- Columnstore nén rất cao; `COLUMNSTORE_ARCHIVE` nén thêm cho partition cũ hiếm đọc.
-- Parquet + Zstd/Snappy cho dữ liệu lạnh: nhỏ và vẫn truy vấn được bằng công cụ phân tích.
+Columnstore nén rất cao, `COLUMNSTORE_ARCHIVE` nén thêm cho partition cũ. Parquet với Zstd/Snappy cho dữ liệu lạnh: nhỏ mà vẫn truy vấn được bằng công cụ phân tích.
 
-#### FinOps: chi phí trên mỗi request
-FinOps là gắn chi phí hạ tầng với giá trị nghiệp vụ để ra quyết định. Chỉ số cơ bản: chi phí trên mỗi đơn vị nghiệp vụ, ví dụ chi phí trên mỗi lượt thi = tổng chi phí hạ tầng của kỳ thi / số lượt thi. Theo dõi chỉ số này theo thời gian cho biết tối ưu có tác dụng thật hay chỉ chuyển chi phí sang chỗ khác.
+##### Chi phí trên mỗi đơn vị nghiệp vụ
+FinOps gắn chi phí hạ tầng với giá trị nghiệp vụ. Chỉ số cơ bản: chi phí trên mỗi lượt thi = tổng chi phí hạ tầng của kỳ thi / số lượt thi. Theo dõi theo thời gian cho biết tối ưu có giảm chi phí thật hay chỉ chuyển sang chỗ khác. Các đòn bẩy:
+- **Right-sizing** theo utilization p95 nhiều tuần và đỉnh theo mùa, không theo trung bình. License SQL Server tính theo core, nên giảm core thừa tiết kiệm hơn tiền máy; tối ưu truy vấn giảm CPU có thể cho phép giảm core.
+- **Tải theo đỉnh**: autoscale tầng ứng dụng theo lịch; tầng DB khó co giãn thì giảm đỉnh bằng cache, hàng đợi.
+- **Cam kết dài hạn** cho tải nền ổn định; instance giá rẻ có thể bị thu hồi cho job batch chịu được gián đoạn.
+- **Lưu trữ**: dọn bảng backup, DB OFFLINE, log cũ; phân tầng lạnh. **Truyền dữ liệu**: phí egress, CDN và nén giảm egress.
 
-Các đòn bẩy:
-- **Right-sizing**: dựa trên utilization thật (CPU, RAM p95 trong nhiều tuần), giảm máy dư. Với SQL Server, license tính theo core, nên giảm core thừa tiết kiệm nhiều hơn tiền máy; tối ưu truy vấn giảm CPU có thể cho phép giảm core.
-- **Tách tải theo đỉnh**: hệ thống thi có đỉnh vài giờ mỗi ngày. Autoscale tầng ứng dụng theo lịch; tầng DB khó co giãn thì giảm đỉnh bằng cache, hàng đợi.
-- **Cam kết dài hạn** (reserved instance, savings plan) cho tải nền ổn định; instance giá rẻ có thể bị thu hồi (spot) cho job batch chịu được gián đoạn.
-- **Lưu trữ**: dọn bảng backup, DB OFFLINE, log cũ (bài 20.3); phân tầng lạnh.
-- **Truyền dữ liệu**: phí egress giữa vùng và ra internet; CDN và nén giảm egress.
-- Gắn tag chi phí theo dịch vụ, theo đội để biết ai tiêu gì.
+#### Cách show off
+Phần thật là các phát hiện về lưu trữ trong đợt rà soát (bảng backup tạo tay, DB OFFLINE, log tích nhiều năm) và lập luận chọn bản Standard thay vì nâng Enterprise chỉ để có online index. FinOps, chi phí trên mỗi lượt thi là khung bạn đề xuất, chưa có số liệu thật; đừng đưa con số tiền.
 
-#### Kiểm chứng
-- Chi phí trên mỗi lượt thi theo tháng; dung lượng mỗi tầng; utilization p95 của máy sau right-sizing vẫn trong ngưỡng an toàn.
+> **Ví dụ:** "Trong đợt rà soát, phần lưu trữ có nhiều thứ không ai sở hữu: hàng trăm triệu dòng trong các bảng backup tạo tay, vài database để offline nhưng file vẫn nằm trên đĩa, log lỗi tích từ nhiều năm. Những thứ đó không chỉ tốn đĩa mà còn làm backup và restore lâu hơn. Tôi đề xuất mỗi bảng lớn một chính sách giữ dữ liệu, dữ liệu lạnh chuyển ra kho rẻ nhưng vẫn có đường đọc lại cho tra cứu khiếu nại. Về license, khi cần tạo index lớn, tôi chọn dời sang khung đêm thay vì đề xuất nâng Enterprise, vì license tính theo core và chênh lệch rất lớn. Nếu được làm tiếp, tôi muốn theo dõi chi phí trên mỗi lượt thi để biết tối ưu nào giảm tiền thật; hiện tôi chưa có số liệu đó."
 
-#### Bẫy
+Điểm ăn điểm:
+- Nói chi phí theo đơn vị nghiệp vụ, không chỉ theo tài nguyên.
+- Right-sizing theo p95 và đỉnh mùa thi, không theo trung bình.
+- License theo core là đòn bẩy lớn với SQL Server.
+- Phân tầng lạnh nhưng giữ đường đọc cho tra cứu.
+
+#### Câu hỏi vặn
+- **"Anh phân tầng dữ liệu kết quả thi qua nhiều năm thế nào?"** Năm học hiện tại ở bảng chính có index cho tra cứu; năm trước chuyển sang bảng archive nén page hoặc columnstore archive; dữ liệu nhiều năm xuất Parquet ra object storage tầng cool, giữ theo yêu cầu pháp lý; luôn có đường đọc cho tra cứu khiếu nại.
+- **"Chi phí trên mỗi request dùng để làm gì?"** Gắn chi phí hạ tầng với đơn vị nghiệp vụ, so sánh theo thời gian và giữa các phương án. Nó cho biết tối ưu giảm chi phí thật hay chỉ chuyển chỗ, và giúp dự báo khi số người dùng tăng.
+- **"Right-sizing server SQL Server cần lưu ý gì?"** Dựa trên p95 utilization và đỉnh theo mùa thi, không theo trung bình; license theo core nên giảm core thừa tiết kiệm lớn; giảm RAM thì kiểm tra buffer pool và page life expectancy; thử trên replica hoặc môi trường test trước.
+- **"Khi nào bật page compression?"** Bảng lớn, đọc nhiều, I/O là nút thắt, CPU còn dư. Không hợp với bảng ghi rất nóng khi CPU đang cao. Ước lượng bằng `sp_estimate_data_compression_savings`, bật trên partition cũ trước.
+- **"Đưa log cũ vào tầng archive của cloud cho rẻ có vấn đề gì?"** Lấy lại mất nhiều giờ và tốn phí truy xuất. Dữ liệu còn có thể cần cho khiếu nại hay đối soát thì để tầng cool hoặc bảng archive, chỉ dữ liệu gần như không bao giờ đọc mới vào archive.
+- **"Anh có số tiết kiệm được bao nhiêu không?"** Không. Tôi chỉ ra các nguồn lãng phí và đề xuất chính sách; số tiền cụ thể cần dữ liệu chi phí hạ tầng mà tôi không nắm. Tôi không ước đoán con số khi kể.
+
+#### Bẫy cần tránh
 - Right-sizing theo trung bình: máy đủ cho ngày thường, sập ở đỉnh kỳ thi.
-- Đưa dữ liệu còn cần tra cứu (khiếu nại) vào tầng archive: lấy lại mất nhiều giờ, tốn phí.
-- Nén page trên bảng ghi rất nóng: CPU tăng, insert chậm hơn.
+- Nén page trên bảng ghi rất nóng khi CPU đang cao.
+- Đưa ra con số tiết kiệm không có nguồn.
 
-#### Câu hỏi phỏng vấn
-- **"Bạn phân tầng dữ liệu kết quả thi qua nhiều năm thế nào?"** Năm học hiện tại ở bảng chính (nóng/ấm), có index cho tra cứu; năm trước chuyển sang bảng archive nén page hoặc columnstore archive; dữ liệu nhiều năm xuất Parquet ra object storage tầng cool, giữ theo yêu cầu pháp lý; luôn có đường đọc cho tra cứu khiếu nại.
-- **"Chi phí trên mỗi request dùng để làm gì?"** Gắn chi phí hạ tầng với đơn vị nghiệp vụ, so sánh theo thời gian và giữa các phương án. Nó cho biết tối ưu giảm chi phí thật hay chỉ chuyển sang chỗ khác, và giúp dự báo chi phí khi số người dùng tăng.
-- **"Right-sizing server SQL Server cần lưu ý gì?"** Dựa trên p95 utilization và đỉnh theo mùa (kỳ thi), không theo trung bình; license tính theo core nên giảm core thừa tiết kiệm lớn; giảm RAM thì kiểm tra buffer pool và page life expectancy; thử trên replica hoặc môi trường test trước.
-- **"Khi nào nên bật page compression?"** Bảng lớn, đọc nhiều, I/O là nút thắt, CPU còn dư: giảm dung lượng và số trang đọc. Không hợp với bảng ghi rất nóng và CPU đang cao. Ước lượng bằng `sp_estimate_data_compression_savings`, bật theo partition cũ trước.
-
-#### Tóm tắt
+#### Nhớ nhanh
 - Dữ liệu chia nóng, ấm, lạnh; di chuyển theo tuổi bằng partition, export, lifecycle rule.
-- Mọi tầng đều có TTL hoặc retention.
+- Mọi tầng có TTL hoặc retention; giữ đường đọc cho tra cứu.
 - Nén đổi CPU lấy dung lượng và I/O; ước lượng trước khi bật.
-- FinOps: chi phí trên mỗi đơn vị nghiệp vụ; right-sizing theo p95 và đỉnh.
-- License SQL Server theo core: tối ưu truy vấn có thể giảm chi phí license.
+- Chi phí trên mỗi đơn vị nghiệp vụ; right-sizing theo p95 và đỉnh; license SQL Server theo core.
 
 #### Bài tập
-1. Kỳ thi tốn 120 triệu đồng hạ tầng mỗi tháng, phục vụ 2 triệu lượt thi. Sau tối ưu cache, chi phí còn 90 triệu, lượt thi tăng lên 2,5 triệu. Tính chi phí mỗi lượt thi trước và sau.
-   **Đáp án:** Trước: 60 đồng/lượt; sau: 36 đồng/lượt, giảm 40%.
-2. Viết lệnh ước lượng mức tiết kiệm khi bật page compression cho một bảng log.
-   **Đáp án:** `EXEC sp_estimate_data_compression_savings 'dbo', 'AnswerLog', NULL, NULL, 'PAGE';`
-3. Đề xuất chính sách giữ dữ liệu ba tầng cho log đáp án từng câu.
-   **Đáp án:** Nóng: 30 ngày ở bảng chính partition theo ngày; ấm: tới hết năm học ở replica/bảng archive nén; lạnh: Parquet trên object storage tầng cool 5 năm; quá hạn thì xoá bằng lifecycle rule.
+1. Kỳ thi tốn 120 triệu đồng hạ tầng mỗi tháng, phục vụ 2 triệu lượt thi. Sau tối ưu, chi phí còn 90 triệu, lượt thi tăng lên 2,5 triệu. Tính chi phí mỗi lượt thi trước và sau.
+   **Đáp án:** Trước 60 đồng/lượt; sau 36 đồng/lượt, giảm 40%.
+2. Đề xuất chính sách giữ dữ liệu ba tầng cho log đáp án từng câu.
+   **Đáp án:** Nóng: 30 ngày ở bảng chính partition theo ngày; ấm: tới hết năm học ở replica hoặc bảng archive nén; lạnh: Parquet trên object storage tầng cool 5 năm; quá hạn xoá bằng lifecycle rule.
 
 ### Bài 23.9. Mảng khác chưa đi sâu
 
-#### Mục tiêu
-- Sau bài này, bạn nêu được các khái niệm cốt lõi của PostgreSQL, MySQL InnoDB khác SQL Server ở đâu.
-- Bạn biết các điểm tối ưu chính ở tầng Linux, JVM, Go, frontend và dữ liệu lớn đủ để trao đổi với đội khác.
-- Bạn biết mảng nào cần học sâu thêm tuỳ vị trí ứng tuyển.
+#### Kiến thức
+Vị trí senior backend thường đòi bạn nói chuyện được với đội khác, kể cả khi mảng đó không phải thế mạnh. Bài này là bản đồ các khái niệm cốt lõi, đủ để không trả lời sai và biết mình cần học sâu thêm chỗ nào.
 
-#### PostgreSQL
-- **MVCC**: `UPDATE` không sửa tại chỗ mà tạo phiên bản dòng mới (tuple), dòng cũ thành dead tuple. Khác SQL Server (version store riêng, chỉ khi bật RCSI/snapshot).
-- **VACUUM và bloat**: autovacuum dọn dead tuple để tái sử dụng chỗ; bảng cập nhật nhiều mà vacuum không theo kịp thì phình (bloat), index cũng phình. Transaction mở lâu chặn vacuum dọn. VACUUM còn chống transaction ID wraparound; bỏ mặc thì DB có thể buộc dừng ghi.
-- **`EXPLAIN (ANALYZE, BUFFERS)`**: chạy thật, cho số dòng thực tế và số buffer đọc từ cache (`shared hit`) hay từ đĩa (`read`); tương đương actual plan + `STATISTICS IO`.
-- **PgBouncer**: PostgreSQL tạo một process cho mỗi kết nối, kết nối đắt hơn SQL Server nhiều; PgBouncer gộp kết nối. Chế độ transaction pooling cho phép nhiều client dùng chung ít kết nối thật, đổi lại không dùng được tính năng gắn với session (biến session, advisory lock theo session; prepared statement chỉ được hỗ trợ ở bản PgBouncer mới).
+##### PostgreSQL
+- **MVCC**: `UPDATE` không sửa tại chỗ mà tạo phiên bản dòng mới, dòng cũ thành dead tuple. Khác SQL Server, nơi chỉ khi bật RCSI hoặc snapshot mới lưu phiên bản cũ, và lưu ở version store riêng.
+- **VACUUM và bloat**: autovacuum dọn dead tuple; bảng cập nhật nhiều mà vacuum không kịp thì phình, index cũng phình. Transaction mở lâu chặn vacuum. VACUUM còn chống transaction ID wraparound; bỏ mặc thì DB có thể buộc dừng ghi.
+- **`EXPLAIN (ANALYZE, BUFFERS)`**: chạy thật, cho số dòng thực tế và số buffer đọc từ cache hay từ đĩa.
+- **PgBouncer**: mỗi kết nối PostgreSQL là một process, đắt hơn nhiều so với SQL Server. Transaction pooling cho nhiều client dùng chung ít kết nối thật, đổi lại hạn chế tính năng gắn với session.
+- Streaming replication cho replica đọc được; độ trễ replica gây lỗi read-your-writes.
 
-#### MySQL InnoDB
-- **Clustered primary key**: bảng luôn được tổ chức theo PK; index phụ chứa giá trị PK làm con trỏ, nên PK dài (UUID chuỗi) làm mọi index phụ to ra.
-- **Buffer pool** (`innodb_buffer_pool_size`): tương tự buffer pool SQL Server, thường đặt phần lớn RAM máy chuyên dụng.
-- **Gap lock / next-key lock**: mức cô lập mặc định REPEATABLE READ khoá cả khoảng trống giữa các khoá index để chống phantom; truy vấn cập nhật theo khoảng không có index phù hợp có thể khoá rộng, gây deadlock bất ngờ khi insert đồng thời.
+##### MySQL InnoDB
+Bảng luôn tổ chức theo primary key; index phụ chứa giá trị PK làm con trỏ, nên PK dài (UUID dạng chuỗi) làm mọi index phụ to ra. Ở REPEATABLE READ mặc định, gap lock và next-key lock khoá cả khoảng trống giữa các khoá index để chống phantom; cập nhật theo khoảng không có index phù hợp có thể khoá rộng và deadlock bất ngờ.
 
-#### Linux
-- **TCP backlog** (`net.core.somaxconn`, backlog của listen): hàng chờ kết nối chưa được accept; đầy thì kết nối mới bị từ chối hoặc trễ trong đỉnh.
-- **File descriptor** (`ulimit -n`): mỗi socket là một fd; giới hạn thấp gây lỗi "too many open files" khi nhiều kết nối.
-- **NUMA**: truy cập bộ nhớ của node khác chậm hơn; ảnh hưởng DB lớn và tiến trình nhiều thread.
-- **Công cụ của Brendan Gregg**: phương pháp USE, `perf` (CPU profiling, flame graph), eBPF (`bcc`, `bpftrace`) để đo độ trễ I/O, syscall, mạng với chi phí thấp trên production.
+##### Linux và runtime khác
+- TCP backlog (`net.core.somaxconn`) đầy thì kết nối mới bị từ chối hoặc trễ; `ulimit -n` thấp gây "too many open files"; NUMA làm truy cập bộ nhớ node khác chậm hơn.
+- Công cụ: phương pháp USE, `perf` và flame graph, eBPF (`bcc`, `bpftrace`) đo I/O, syscall, mạng với chi phí thấp.
 
 ```bash
-# Kiểm tra nhanh 60 giây đầu khi máy chậm (theo checklist của Brendan Gregg)
+# 60 giây đầu khi máy chậm, theo checklist của Brendan Gregg
 uptime; dmesg | tail; vmstat 1 5; mpstat -P ALL 1 3; pidstat 1 3
 iostat -xz 1 3; free -m; sar -n DEV 1 3; sar -n TCP,ETCP 1 3; top -b -n 1 | head -20
 ```
 
-#### Runtime khác
-- **JVM**: GC thế hệ tương tự .NET; G1 là mặc định, ZGC và Shenandoah cho pause rất ngắn với heap lớn; JIT với warmup (tiered compilation), nên load test phải có giai đoạn warmup.
-- **Go**: goroutine nhẹ (stack nhỏ, tự lớn), scheduler M:N; `GOMAXPROCS` (cần khớp với giới hạn CPU của container ở các bản cũ); `pprof` cho CPU, heap, goroutine, block profile; GC đồng thời ưu tiên pause ngắn.
+- JVM: G1 mặc định, ZGC và Shenandoah cho pause rất ngắn với heap lớn; load test phải có giai đoạn warmup JIT. Go: goroutine nhẹ, scheduler M:N, `GOMAXPROCS` cần khớp giới hạn CPU của container ở bản cũ, `pprof` cho CPU, heap, goroutine.
 
-#### Frontend và mobile
-- **Core Web Vitals**: LCP (thời gian hiển thị phần tử lớn nhất, tốt khi dưới 2,5 s), INP (độ trễ phản hồi tương tác, tốt khi dưới 200 ms; thay FID từ 2024), CLS (độ xô lệch bố cục, tốt khi dưới 0,1).
-- Bundle size: chia nhỏ theo route (code splitting), bỏ thư viện thừa (tree shaking), nén.
-- Lazy loading ảnh và component ngoài màn hình; ảnh định dạng hiện đại (WebP, AVIF) qua CDN.
-- Backend ảnh hưởng trực tiếp: TTFB, payload, số request tuần tự (bài 23.6).
+##### Frontend, dữ liệu lớn, tìm kiếm
+- Core Web Vitals: LCP (tốt dưới 2,5 s), INP (tốt dưới 200 ms, thay FID từ 2024), CLS (tốt dưới 0,1). Backend ảnh hưởng qua TTFB, payload, số request tuần tự.
+- Spark: shuffle là bước đắt nhất, cẩn thận lệch dữ liệu. Data lake: Parquet trên object storage, Delta Lake hoặc Iceberg thêm transaction và time travel.
+- Elasticsearch: số shard chọn lúc tạo index (thường nhắm vài chục GB mỗi shard); `keyword` cho lọc và gom nhóm chính xác, `text` cho tìm toàn văn; `refresh_interval` mặc định 1 giây, tăng hoặc tắt tạm khi nạp hàng loạt.
 
-#### Dữ liệu lớn và tìm kiếm
-- **Spark**: xử lý phân tán trên cụm; chú ý shuffle (đắt nhất), lệch dữ liệu (skew), số partition.
-- **Data lake**: file Parquet trên object storage, định dạng bảng (Delta Lake, Apache Iceberg) thêm transaction, schema evolution, time travel; tách lưu trữ và tính toán.
-- **Elasticsearch/OpenSearch**: số shard chọn khi tạo index (nhiều shard nhỏ tốn overhead; thường nhắm cỡ vài chục GB mỗi shard); mapping đúng (`keyword` cho lọc/gom nhóm chính xác, `text` cho tìm toàn văn); `refresh_interval` mặc định 1 giây quyết định bao lâu tài liệu mới tìm được, tăng lên (hoặc tắt khi nạp hàng loạt) để tăng tốc ghi.
+#### Cách show off
+Ở AvePoint bạn có trải nghiệm thật với PostgreSQL replica và sharding, nên phần PostgreSQL nói được bằng trải nghiệm. Hệ thống thi dùng Elasticsearch cho log (đi qua Kafka). Các mảng khác (InnoDB, JVM, Go, Spark) nói thẳng là hiểu ở mức khái niệm, và chỉ ra cách bạn sẽ học nhanh: tìm điểm tương đương với thứ đã biết trong SQL Server và .NET.
 
-#### Kiểm chứng
-- Với mỗi mảng, tự trả lời được: nút thắt điển hình là gì, đo bằng công cụ nào, một cấu hình quan trọng nhất là gì.
+> **Ví dụ:** "Phần lớn kinh nghiệm của tôi là SQL Server, nhưng ở AvePoint tôi đã làm với PostgreSQL có replica, nên tôi quen với khác biệt lớn nhất giữa hai bên: PostgreSQL luôn tạo phiên bản dòng mới khi cập nhật, dòng cũ chờ vacuum dọn, nên bảng cập nhật nhiều hay transaction mở lâu sẽ làm bảng phình. Với replica, vấn đề hay gặp là đọc ngay sau khi ghi mà replica chưa kịp, nên màn hình nào cần thấy dữ liệu vừa ghi thì đọc primary. Với MySQL hay Go, tôi chưa vận hành production; tôi biết các điểm cốt lõi như InnoDB tổ chức bảng theo khoá chính, hay gap lock ở mức cô lập mặc định, và nếu vào đội dùng chúng, tôi sẽ bắt đầu bằng cách đối chiếu với những gì đã biết ở SQL Server."
 
-#### Bẫy
-- Mang thói quen SQL Server sang PostgreSQL: mở hàng nghìn kết nối trực tiếp, bỏ qua vacuum, transaction mở lâu.
-- Dùng UUID chuỗi làm PK trong InnoDB: mọi index phụ to ra, insert ngẫu nhiên vào B-tree.
-- Kết luận về hệ thống Linux từ một lần `top`: cần số theo thời gian (`vmstat`, `iostat`, `sar`).
+Điểm ăn điểm:
+- So sánh MVCC PostgreSQL với row versioning SQL Server một cách chính xác.
+- Biết vì sao PostgreSQL cần PgBouncer.
+- Nói rõ ranh giới giữa trải nghiệm thật và hiểu biết khái niệm.
 
-#### Câu hỏi phỏng vấn
-- **"MVCC của PostgreSQL khác row versioning của SQL Server thế nào?"** PostgreSQL luôn tạo phiên bản dòng mới ngay trong bảng, dòng cũ thành dead tuple chờ VACUUM dọn; bảng cập nhật nhiều có thể bloat. SQL Server mặc định sửa tại chỗ và dùng khoá; chỉ khi bật RCSI/snapshot mới lưu phiên bản cũ trong version store (tempdb hoặc PVS khi bật ADR).
-- **"Vì sao PostgreSQL thường cần PgBouncer?"** Mỗi kết nối là một process riêng, tốn bộ nhớ và chi phí tạo; hàng nghìn kết nối làm server chậm. PgBouncer transaction pooling cho nhiều client dùng chung ít kết nối thật; đổi lại hạn chế tính năng gắn với session.
-- **"Gap lock trong InnoDB gây vấn đề gì?"** Ở REPEATABLE READ, InnoDB khoá cả khoảng giữa các khoá index để chống phantom. Cập nhật hay xoá theo khoảng, đặc biệt không có index phù hợp, khoá rộng và chặn insert của phiên khác, dễ deadlock. Index đúng hoặc dùng READ COMMITTED nếu nghiệp vụ cho phép.
-- **"Core Web Vitals gồm những chỉ số nào và backend ảnh hưởng tới chỉ số nào?"** LCP, INP, CLS. Backend ảnh hưởng LCP qua TTFB, kích thước payload, số request tuần tự; ảnh hưởng INP khi tương tác phải chờ API chậm.
-- **"refresh_interval trong Elasticsearch là gì?"** Khoảng thời gian index làm mới để tài liệu mới tìm được, mặc định 1 giây. Mỗi lần refresh tạo segment mới, tốn tài nguyên; khi nạp hàng loạt nên tăng hoặc tắt tạm, chấp nhận dữ liệu mới tìm thấy chậm hơn.
+#### Câu hỏi vặn
+- **"MVCC của PostgreSQL khác row versioning của SQL Server thế nào?"** PostgreSQL luôn tạo phiên bản dòng mới ngay trong bảng, dòng cũ thành dead tuple chờ VACUUM; bảng cập nhật nhiều có thể bloat. SQL Server mặc định sửa tại chỗ và dùng khoá; chỉ khi bật RCSI hoặc snapshot mới lưu phiên bản cũ trong version store.
+- **"Vì sao PostgreSQL thường cần PgBouncer?"** Mỗi kết nối là một process, tốn bộ nhớ và chi phí tạo; hàng nghìn kết nối làm server chậm. PgBouncer transaction pooling cho nhiều client dùng chung ít kết nối thật, đổi lại hạn chế tính năng gắn với session.
+- **"Gap lock trong InnoDB gây vấn đề gì?"** Ở REPEATABLE READ, InnoDB khoá cả khoảng giữa các khoá index để chống phantom. Cập nhật hay xoá theo khoảng, nhất là không có index phù hợp, khoá rộng và chặn insert của phiên khác, dễ deadlock. Index đúng, hoặc READ COMMITTED nếu nghiệp vụ cho phép.
+- **"Bảng PostgreSQL dung lượng tăng mãi dù số dòng không đổi, vì sao?"** Bloat do dead tuple chưa được dọn kịp, có thể vì transaction mở lâu hoặc autovacuum cấu hình quá thận trọng. Xem `pg_stat_user_tables` (`n_dead_tup`, `last_autovacuum`), `pg_stat_activity` tìm transaction lâu, chỉnh autovacuum riêng cho bảng.
+- **"Core Web Vitals gồm gì, backend ảnh hưởng chỉ số nào?"** LCP, INP, CLS. Backend ảnh hưởng LCP qua TTFB, kích thước payload, số request tuần tự; ảnh hưởng INP khi tương tác phải chờ API chậm.
+- **"refresh_interval trong Elasticsearch là gì?"** Khoảng thời gian index làm mới để tài liệu mới tìm được, mặc định 1 giây. Mỗi lần refresh tạo segment mới, tốn tài nguyên; nạp hàng loạt thì tăng hoặc tắt tạm, chấp nhận dữ liệu mới tìm thấy chậm hơn.
+- **"Máy Linux chạy API chậm, anh chạy lệnh gì đầu tiên?"** `uptime` cho load average theo thời gian, `vmstat 1` cho run queue, swap, CPU user/system/iowait, `iostat -xz 1` cho độ trễ và mức bận của đĩa, thêm `sar -n TCP,ETCP 1` cho lỗi và retransmit TCP. Một lần `top` không đủ để kết luận.
 
-#### Tóm tắt
-- PostgreSQL: MVCC sinh dead tuple, VACUUM là bắt buộc, PgBouncer cho kết nối.
+#### Bẫy cần tránh
+- Mang thói quen SQL Server sang PostgreSQL: mở hàng nghìn kết nối trực tiếp, bỏ qua vacuum, để transaction mở lâu.
+- Dùng UUID dạng chuỗi làm PK trong InnoDB.
+- Giả vờ có kinh nghiệm vận hành ở mảng chỉ biết khái niệm.
+
+#### Nhớ nhanh
+- PostgreSQL: MVCC sinh dead tuple, VACUUM bắt buộc, PgBouncer cho kết nối.
 - InnoDB: bảng theo PK, index phụ chứa PK, gap lock ở REPEATABLE READ.
-- Linux: backlog, file descriptor, NUMA; đo bằng `perf`, eBPF, checklist 60 giây.
-- JVM, Go có GC và công cụ profiling riêng; nguyên tắc đo trước khi tối ưu giống .NET.
-- Frontend: LCP, INP, CLS; dữ liệu lớn: shuffle, định dạng bảng, shard và mapping của Elasticsearch.
+- Linux: backlog, file descriptor, NUMA; đo bằng checklist 60 giây, `perf`, eBPF.
+- Nói rõ đâu là trải nghiệm thật, đâu là hiểu biết khái niệm.
 
 #### Bài tập
-1. Bảng PostgreSQL cập nhật 10 triệu lần mỗi ngày, dung lượng tăng liên tục dù số dòng không đổi. Nêu nguyên nhân và cách kiểm tra.
-   **Đáp án:** Bloat do dead tuple chưa được vacuum dọn kịp, có thể do transaction mở lâu hoặc autovacuum cấu hình quá thận trọng. Kiểm tra `pg_stat_user_tables` (`n_dead_tup`, `last_autovacuum`), `pg_stat_activity` tìm transaction lâu; chỉnh autovacuum riêng cho bảng.
-2. Chọn mapping cho trường `schoolName` cần cả tìm toàn văn lẫn gom nhóm chính xác trong Elasticsearch.
+1. Chọn mapping cho trường `schoolName` cần cả tìm toàn văn lẫn gom nhóm chính xác trong Elasticsearch.
    **Đáp án:** Multi-field: `text` cho tìm kiếm và sub-field `keyword` (ví dụ `schoolName.raw`) cho lọc, sắp xếp, aggregation.
-3. Liệt kê ba lệnh Linux đầu tiên bạn chạy khi API trên máy Linux chậm, và mỗi lệnh cho biết gì.
-   **Đáp án:** `uptime` (load average theo thời gian), `vmstat 1` (run queue, swap, CPU user/system/iowait), `iostat -xz 1` (độ trễ và mức bận của đĩa); thêm `sar -n TCP,ETCP 1` cho lỗi và retransmit TCP.
+2. Liệt kê ba lệnh Linux đầu tiên khi API trên máy Linux chậm và mỗi lệnh cho biết gì.
+   **Đáp án:** `uptime` (load average), `vmstat 1` (run queue, swap, iowait), `iostat -xz 1` (độ trễ và mức bận của đĩa); thêm `sar -n TCP,ETCP 1` cho lỗi và retransmit TCP.

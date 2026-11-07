@@ -95,7 +95,7 @@ export function Practice() {
         <p className="eyebrow">Lặp lại ngắt quãng · {CARDS.length} câu hỏi</p>
         <h1>Ôn tập</h1>
         <p className="lede">
-          Mỗi thẻ là một câu hỏi phỏng vấn trong giáo trình. Tự trả lời thành tiếng, rồi mới mở trả lời mẫu. Phím tắt: <kbd>Space</kbd> mở đáp án,{' '}
+          Mỗi thẻ là một câu hỏi vặn trong giáo trình. Tự trả lời thành tiếng, rồi mới mở cách trả lời. Phím tắt: <kbd>Space</kbd> mở đáp án,{' '}
           <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> chấm mức nhớ. Thẻ nhớ rõ quay lại sau 1, 3, rồi 7 ngày.
         </p>
       </header>

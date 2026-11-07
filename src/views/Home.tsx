@@ -1,6 +1,6 @@
 import { ArrowRight, CheckCircle, CursorClick } from '@phosphor-icons/react';
 import { CARDS, LESSONS, PARTS, TOTALS, chapterHref, lessonById, lessonHref } from '../data';
-import { Html, Meter, Ring, StatusBadge } from '../components';
+import { Html, Meter, Ring } from '../components';
 import { isDue, isLearned, useProgress } from '../store';
 
 export function Home() {
@@ -21,8 +21,8 @@ export function Home() {
         <p className="eyebrow">Giáo trình · {TOTALS.parts} phần · {TOTALS.chapters} chương · {TOTALS.lessons} bài</p>
         <h1>Ôn phỏng vấn Senior Backend .NET</h1>
         <p className="lede">
-          Đọc tuần tự từ Phần I. Mỗi bài có mục tiêu, kiến thức nền, cách nói trong phỏng vấn, câu hỏi kèm trả lời mẫu, tóm tắt và bài tập. Câu hỏi đã
-          đọc được đưa vào mục Ôn tập để lặp lại ngắt quãng.
+          Đọc tuần tự từ Phần I. Mỗi bài gồm kiến thức, cách show off khi trả lời, các câu hỏi vặn kèm cách trả lời, bẫy cần tránh và phần nhớ nhanh. Câu hỏi vặn
+          được đưa vào mục Ôn tập để lặp lại ngắt quãng.
         </p>
         <div className="cover-actions">
           {resume && (
@@ -108,7 +108,6 @@ export function Home() {
                             <span className="lesson-row-title">{l.titleText}</span>
                             <span className="lesson-row-meta">
                               {l.viz && <CursorClick weight="bold" aria-label="Có mô phỏng" />}
-                              {l.status && <StatusBadge status={l.status} />}
                               <span className="muted small">{l.minutes}′</span>
                               {progress.read[l.id] && <CheckCircle weight="fill" className="row-check" aria-label="Đã học" />}
                             </span>

@@ -4,8 +4,12 @@
 //   # Phần I. Title            → part
 //   ## Chương 3. Title         → chapter (numbered across the whole book)
 //   ### Bài 3.1. Title         → lesson
-//   #### Section               → lesson section; "Mục tiêu", "Câu hỏi phỏng vấn", "Tóm tắt", "Bài tập" are special.
-// Lesson preamble lines: **Dòng CV:**, **Trạng thái:**, **Viz:**.
+//   #### Section               → lesson section, in this order:
+//        "Kiến thức" (first), "Cách show off", [free sections], "Câu hỏi vặn" (Q&A list → flashcards),
+//        [free sections, e.g. "Bẫy cần tránh"], "Nhớ nhanh", optional "Bài tập" (last).
+//   ##### Sub-heading          → stays inside its section.
+// Lesson preamble line: **Viz:** <key> (optional).
+// `node scripts/build-data.mjs --only 02-vtc-a.md` validates one file without writing book.json.
 import { readdirSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { Marked } from 'marked';
 import hljs from 'highlight.js/lib/core';
@@ -72,8 +76,10 @@ const plain = (html) =>
     .trim();
 
 const dir = new URL('../content/book/', import.meta.url);
+const onlyAt = process.argv.indexOf('--only');
+const only = onlyAt > 0 ? process.argv[onlyAt + 1]?.replace(/^.*[\\/]/, '') : '';
 const files = readdirSync(dir)
-  .filter((f) => /^\d+.*\.md$/.test(f))
+  .filter((f) => /^\d+.*\.md$/.test(f) && (!only || f === only))
   .sort();
 
 const errors = [];
@@ -122,13 +128,9 @@ for (const file of files) {
   }
 }
 
-const STATUSES = [
-  ['Minh họa', 'minh-hoa'],
-  ['Một phần', 'mot-phan'],
-  ['Thật', 'that'],
-];
 const QA_RE = /^\*\*"([\s\S]+?)"\*\*\s*([\s\S]*)$/;
-const SPECIAL = { 'Mục tiêu': 'goals', 'Câu hỏi phỏng vấn': 'qas', 'Tóm tắt': 'summary', 'Bài tập': 'exercises' };
+const SPECIAL = { 'Câu hỏi vặn': 'qas', 'Nhớ nhanh': 'summary', 'Bài tập': 'exercises' };
+const REQUIRED = ['Kiến thức', 'Cách show off', 'Câu hỏi vặn', 'Nhớ nhanh'];
 
 function buildLesson(l, part, chapter) {
   const where = `${l.file} Bài ${l.id}`;
@@ -157,27 +159,19 @@ function buildLesson(l, part, chapter) {
       groups.push({ title: t.text.trim(), tokens: [] });
       continue;
     }
-    if (t.type === 'heading') {
+    if (t.type === 'heading' && !(t.depth === 5 && groups.length)) {
       fail(where, `unexpected h${t.depth} "${t.text}"`);
       continue;
     }
     if (!groups.length) {
       if (t.type === 'paragraph') {
-        // A paragraph may hold several **Key:** lines.
         for (const line of t.text.split('\n')) {
-          const m = line.match(/^\*\*(Dòng CV|Trạng thái|Viz):\*\*\s*(.*)$/);
+          const m = line.match(/^\*\*Viz:\*\*\s*(.*)$/);
           if (!m) {
-            fail(where, `preamble line not recognised: ${line.slice(0, 60)}`);
+            fail(where, `only "**Viz:** key" may come before the first section: ${line.slice(0, 60)}`);
             continue;
           }
-          if (m[1] === 'Viz') out.viz = m[2].trim();
-          else if (m[1] === 'Dòng CV') out.cvLine = inline(m[2].trim());
-          else {
-            const st = STATUSES.find(([label]) => m[2].trim().startsWith(label));
-            if (!st) fail(where, `status must start with Thật / Một phần / Minh họa`);
-            out.status = st ? st[1] : 'mot-phan';
-            out.statusHtml = inline(m[2].trim().replace(/^(Thật|Một phần|Minh họa)\.?\s*/, ''));
-          }
+          out.viz = m[1].trim();
         }
       } else {
         fail(where, `unexpected ${t.type} before the first section`);
@@ -188,8 +182,12 @@ function buildLesson(l, part, chapter) {
   }
 
   const titles = groups.map((g) => g.title);
-  for (const name of Object.keys(SPECIAL)) if (!titles.includes(name)) fail(where, `missing section "${name}"`);
-  if (titles[0] !== 'Mục tiêu') fail(where, `first section must be "Mục tiêu"`);
+  for (const name of REQUIRED) if (!titles.includes(name)) fail(where, `missing section "${name}"`);
+  const at = (name) => titles.indexOf(name);
+  if (titles[0] !== 'Kiến thức') fail(where, `first section must be "Kiến thức"`);
+  if (at('Cách show off') > at('Câu hỏi vặn')) fail(where, `"Cách show off" must come before "Câu hỏi vặn"`);
+  if (at('Nhớ nhanh') < at('Câu hỏi vặn')) fail(where, `"Nhớ nhanh" must come after "Câu hỏi vặn"`);
+  if (titles.includes('Bài tập') && titles.at(-1) !== 'Bài tập') fail(where, `"Bài tập" must be the last section`);
 
   let taskN = 0;
   const withTasks = (html) =>
@@ -201,14 +199,16 @@ function buildLesson(l, part, chapter) {
     });
 
   const usedIds = new Set();
+  let afterQa = false;
   for (const g of groups) {
     const kind = SPECIAL[g.title];
+    if (kind === 'qas') afterQa = true;
     if (kind === 'goals') out.goalsHtml = render(g.tokens);
     else if (kind === 'summary') out.summaryHtml = render(g.tokens);
     else if (kind === 'qas') {
       for (const t of g.tokens) {
         if (t.type !== 'list') {
-          fail(where, `"Câu hỏi phỏng vấn" may only hold a list (found ${t.type})`);
+          fail(where, `"Câu hỏi vặn" may only hold a list (found ${t.type})`);
           continue;
         }
         for (const item of t.items) {
@@ -235,7 +235,7 @@ function buildLesson(l, part, chapter) {
       let id = slug(g.title) || 'muc';
       while (usedIds.has(id)) id += '-2';
       usedIds.add(id);
-      out.sections.push({ id, title: inline(g.title), html: withTasks(render(g.tokens)) });
+      out.sections.push({ id, title: inline(g.title), html: withTasks(render(g.tokens)), afterQa });
     }
   }
   if (out.qas.length === 0) fail(where, 'no interview questions');
@@ -280,6 +280,11 @@ chapters.forEach((c, i) => {
 if (errors.length) {
   console.error(`content/book has ${errors.length} problem(s):\n- ${errors.join('\n- ')}`);
   process.exit(1);
+}
+if (only) {
+  const ls = chapters.flatMap((c) => c.lessons);
+  console.log(`${only}: OK, ${chapters.length} chapters, ${ls.length} lessons, ${ls.reduce((n, l) => n + l.qas.length, 0)} questions`);
+  process.exit(0);
 }
 
 mkdirSync(new URL('../src/data/', import.meta.url), { recursive: true });

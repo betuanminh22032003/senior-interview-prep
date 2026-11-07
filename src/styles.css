@@ -998,81 +998,20 @@ mark {
   font-size: 13px;
 }
 
-.cv-box {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface);
-  margin-bottom: 20px;
-  overflow: hidden;
+.lesson-viz {
+  margin: 28px 0 0;
 }
 
-.cv-line {
-  display: flex;
-  gap: 14px;
-  padding: 18px 22px;
-  border-bottom: 1px solid var(--border);
-}
-
-.cv-line > svg {
-  flex: none;
-  font-size: 22px;
-  color: var(--accent);
-  margin-top: 2px;
-}
-
-.cv-text {
-  font: 500 18px/1.5 var(--serif);
-  color: var(--strong);
-}
-
-.cv-text p {
-  margin: 0;
-}
-
-.cv-status {
-  padding: 16px 22px;
-  font-size: 15px;
-  border-left: 4px solid transparent;
-}
-
-.cv-status.status-that {
-  border-left-color: var(--green);
-}
-
-.cv-status.status-mot-phan {
-  border-left-color: var(--yellow);
-}
-
-.cv-status.status-minh-hoa {
-  border-left-color: var(--red);
-  background: color-mix(in srgb, var(--red-bg) 40%, transparent);
-}
-
-.cv-status .prose p {
-  margin: 0;
-}
-
-.goals {
+/* "Cách show off": how to say it in the interview, set apart from the theory. */
+.showoff > .prose {
   padding: 18px 22px;
   border-radius: 12px;
   background: var(--accent-bg);
-  margin-bottom: 36px;
+  border-left: 4px solid var(--accent);
 }
 
-.goals .box-label {
+.showoff > h2 {
   color: var(--accent);
-}
-
-.goals .prose ul {
-  margin: 0;
-}
-
-.goals .prose li {
-  margin: 4px 0;
-}
-
-.lesson-viz {
-  margin: 0 0 40px;
 }
 
 .lesson-section {
@@ -1876,9 +1815,7 @@ mark {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .cv-line,
-  .cv-status,
-  .goals,
+  .showoff > .prose,
   .summary .prose {
     padding: 14px 16px;
   }

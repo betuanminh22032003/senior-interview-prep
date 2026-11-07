@@ -1,6 +1,6 @@
 import { ArrowRight, CheckCircle, CursorClick } from '@phosphor-icons/react';
 import { CHAPTERS, chapterByNum, chapterHref, lessonHref, partOfChapter } from '../data';
-import { Html, Meter, StatusBadge } from '../components';
+import { Html, Meter } from '../components';
 import { useProgress } from '../store';
 
 export function ChapterView({ num }: { num: number }) {
@@ -45,16 +45,15 @@ export function ChapterView({ num }: { num: number }) {
             <a href={lessonHref(l.id)} className={`chapter-lesson ${progress.read[l.id] ? 'done' : ''}`}>
               <span className="mono chapter-lesson-num">Bài {l.id}</span>
               <span className="chapter-lesson-title">{l.titleText}</span>
-              <Html html={l.goalsHtml} className="prose chapter-lesson-goals" />
+              <Html html={l.summaryHtml} className="prose chapter-lesson-goals" />
               <span className="chapter-lesson-meta">
-                {l.status && <StatusBadge status={l.status} />}
                 {l.viz && (
                   <span className="meta-viz">
                     <CursorClick weight="bold" /> Mô phỏng
                   </span>
                 )}
                 <span className="muted small">
-                  {l.minutes} phút · {l.qas.length} câu hỏi · {l.exercises.length} bài tập
+                  {l.minutes} phút · {l.qas.length} câu hỏi vặn{l.exercises.length ? ` · ${l.exercises.length} bài tập` : ""}
                 </span>
                 {progress.read[l.id] && <CheckCircle weight="fill" className="row-check" aria-label="Đã học" />}
               </span>
