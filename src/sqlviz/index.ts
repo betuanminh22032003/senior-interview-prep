@@ -1,3 +1,4 @@
+import './viz.css';
 import type { ComponentType } from 'react';
 import { Cardinality } from './Cardinality';
 import { IndexOrder } from './IndexOrder';
@@ -8,7 +9,7 @@ import { SeekScan } from './SeekScan';
 import { Waits } from './Waits';
 import { WriteCost } from './WriteCost';
 
-/** Widgets referenced by "**Viz:** key" in content/sql-tuning.md. */
+/** Widgets referenced by "**Viz:** key" in content/book/*.md. */
 export const VIZ: Record<string, ComponentType> = {
   'request-timeline': RequestTimeline,
   waits: Waits,

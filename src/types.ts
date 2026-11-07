@@ -4,82 +4,68 @@ export interface QA {
   id: string;
   q: string;
   a: string;
-  source: string;
-  sourceTitle: string;
 }
 
-export interface Card {
+export interface Exercise {
+  q: string;
+  /** Hidden answer; empty when the exercise has none. */
+  a: string;
+}
+
+export interface Section {
   id: string;
-  code: string;
   title: string;
-  group: string;
-  status: Status;
+  html: string;
+}
+
+export interface Lesson {
+  id: string;
+  title: string;
+  titleText: string;
+  part: string;
+  chapter: number;
+  /** The CV line this lesson defends; empty for non-CV lessons. */
+  cvLine: string;
+  status: Status | '';
   statusHtml: string;
-  bodyHtml: string;
-  qas: QA[];
-  search: string;
-}
-
-export interface StatusRow {
-  num: string;
-  line: string;
-  status: Status;
-  real: string;
-  illustrative: string;
-}
-
-export interface Keyword {
-  id: string;
-  group: string;
-  keyword: string;
-  say: string;
-  evidence: string;
-}
-
-export interface BehaviorItem {
-  id: string;
-  question: string;
-  story: string;
-  source: string;
-}
-
-export interface PrepData {
-  introHtml: string;
-  statusRows: StatusRow[];
-  summaryHtml: string;
-  cards: Card[];
-  keywordIntroHtml: string;
-  keywords: Keyword[];
-  design: { frameHtml: string; topics: { id: string; title: string; html: string }[] };
-  behavior: { items: BehaviorItem[]; noteHtml: string };
-  checklist: string[];
-}
-
-export interface SqlSkill {
-  id: string;
-  code: string;
-  title: string;
-  group: string;
-  /** Key of the interactive widget, empty when the skill has none. */
+  /** Key of the interactive widget, empty when the lesson has none. */
   viz: string;
-  bodyHtml: string;
+  goalsHtml: string;
+  sections: Section[];
   qas: QA[];
+  summaryHtml: string;
+  exercises: Exercise[];
+  /** Ids of interactive checklist items inside the sections. */
+  tasks: string[];
+  minutes: number;
 }
 
-export interface SqlGroup {
+export interface Chapter {
+  num: number;
+  title: string;
+  introHtml: string;
+  lessons: Lesson[];
+}
+
+export interface Part {
   id: string;
   title: string;
   introHtml: string;
-  skills: SqlSkill[];
+  chapters: Chapter[];
 }
 
-export interface SqlData {
-  introHtml: string;
-  groups: SqlGroup[];
+export interface Book {
+  parts: Part[];
 }
 
 export const STATUS_LABEL: Record<Status, string> = {
   that: 'Thật',
   'mot-phan': 'Một phần',
   'minh-hoa': 'Minh họa',
+};
+
+export const STATUS_HINT: Record<Status, string> = {
+  that: 'Có bằng chứng: commit, báo cáo, hoặc đã xác nhận.',
+  'mot-phan': 'Cốt lõi thật, con số hoặc phạm vi là minh họa.',
+  'minh-hoa': 'Chưa làm. Chỉ nói ở mức thiết kế.',
 };

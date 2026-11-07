@@ -1,49 +1,59 @@
-import { useCallback, useEffect, useState } from 'react';
-import { DECKS, STUDY_ITEMS, type StudyItem } from '../data';
-import { BoxDots, GradeButtons, Html, PageHeader } from '../components';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { CARDS, PARTS, lessonHref, type Flashcard } from '../data';
+import { BoxDots, GradeButtons, Html, Meter } from '../components';
 import { isDue, isLearned, useProgress, type Grade } from '../store';
 
 const SESSION_SIZE = 20;
-type DeckKey = (typeof DECKS)[number]['key'];
 
 export function Practice() {
   const { progress, grade } = useProgress();
-  const [deck, setDeck] = useState<DeckKey>('qa');
+  const hasRead = Object.keys(progress.read).length > 0;
+  const [deck, setDeck] = useState<string>(hasRead ? 'read' : 'all');
   const [queue, setQueue] = useState<string[] | null>(null);
   const [index, setIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
 
-  const inDeck = useCallback((i: StudyItem) => deck === 'all' || i.deck === deck, [deck]);
+  const decks = useMemo(
+    () => [
+      { key: 'read', label: 'Bài đã học' },
+      { key: 'all', label: 'Tất cả' },
+      ...PARTS.map((p) => ({ key: p.id, label: `Phần ${p.id}` })),
+    ],
+    [],
+  );
+
+  const inDeck = useCallback(
+    (c: Flashcard) => (deck === 'all' ? true : deck === 'read' ? !!progress.read[c.lesson.id] : c.lesson.part === deck),
+    [deck, progress.read],
+  );
 
   const start = (mode: 'due' | 'unlearned') => {
     const now = Date.now();
-    const items = STUDY_ITEMS.filter(inDeck);
+    const items = CARDS.filter(inDeck);
     let ids: string[];
     if (mode === 'due') {
-      const due = items
-        .filter((i) => isDue(progress.srs[i.id], now))
-        .sort((a, b) => progress.srs[a.id].due - progress.srs[b.id].due);
-      const fresh = items.filter((i) => !progress.srs[i.id]);
-      ids = [...due, ...fresh].slice(0, SESSION_SIZE).map((i) => i.id);
+      const due = items.filter((c) => isDue(progress.srs[c.id], now)).sort((a, b) => progress.srs[a.id].due - progress.srs[b.id].due);
+      const fresh = items.filter((c) => !progress.srs[c.id]);
+      ids = [...due, ...fresh].slice(0, SESSION_SIZE).map((c) => c.id);
     } else {
       ids = items
-        .filter((i) => !isLearned(progress.srs[i.id]))
+        .filter((c) => !isLearned(progress.srs[c.id]))
         .slice(0, SESSION_SIZE)
-        .map((i) => i.id);
+        .map((c) => c.id);
     }
     setQueue(ids);
     setIndex(0);
     setRevealed(false);
   };
 
-  const current = queue && index < queue.length ? STUDY_ITEMS.find((i) => i.id === queue[index]) : undefined;
+  const current = queue && index < queue.length ? CARDS.find((c) => c.id === queue[index]) : undefined;
 
   const onGraded = useCallback(
     (g: Grade) => {
       if (!current) return;
       setQueue((q) => {
         if (!q || g !== 'again') return q;
-        // A missed item comes back once at the end of the session.
+        // A missed card comes back once at the end of the session.
         return q.slice(index + 1).includes(current.id) ? q : [...q, current.id];
       });
       setIndex((i) => i + 1);
@@ -70,24 +80,28 @@ export function Practice() {
   }, [current, revealed, grade, onGraded]);
 
   const now = Date.now();
-  const deckItems = STUDY_ITEMS.filter(inDeck);
-  const dueCount = deckItems.filter((i) => isDue(progress.srs[i.id], now)).length;
-  const freshCount = deckItems.filter((i) => !progress.srs[i.id]).length;
-  const unlearnedCount = deckItems.filter((i) => !isLearned(progress.srs[i.id])).length;
+  const deckItems = CARDS.filter(inDeck);
+  const dueCount = deckItems.filter((c) => isDue(progress.srs[c.id], now)).length;
+  const freshCount = deckItems.filter((c) => !progress.srs[c.id]).length;
+  const unlearnedCount = deckItems.filter((c) => !isLearned(progress.srs[c.id])).length;
   const nextDue = deckItems
-    .map((i) => progress.srs[i.id]?.due)
+    .map((c) => progress.srs[c.id]?.due)
     .filter((d): d is number => !!d && d > now)
     .sort((a, b) => a - b)[0];
 
   return (
     <div className="page">
-      <PageHeader eyebrow="Lặp lại ngắt quãng" title="Luyện tập">
-        Đọc câu hỏi, tự trả lời thành tiếng, rồi mới mở đáp án. Phím tắt: <kbd>Space</kbd> mở đáp án, <kbd>1</kbd> <kbd>2</kbd>{' '}
-        <kbd>3</kbd> chấm mức nhớ.
-      </PageHeader>
+      <header className="page-header rise">
+        <p className="eyebrow">Lặp lại ngắt quãng · {CARDS.length} câu hỏi</p>
+        <h1>Ôn tập</h1>
+        <p className="lede">
+          Mỗi thẻ là một câu hỏi phỏng vấn trong giáo trình. Tự trả lời thành tiếng, rồi mới mở trả lời mẫu. Phím tắt: <kbd>Space</kbd> mở đáp án,{' '}
+          <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> chấm mức nhớ. Thẻ nhớ rõ quay lại sau 1, 3, rồi 7 ngày.
+        </p>
+      </header>
 
-      <div className="chips rise">
-        {DECKS.map((d) => (
+      <div className="chips rise" role="group" aria-label="Bộ thẻ">
+        {decks.map((d) => (
           <button
             key={d.key}
             className={`chip ${deck === d.key ? 'active' : ''}`}
@@ -103,30 +117,36 @@ export function Practice() {
 
       {!queue && (
         <div className="card session-start rise">
-          <div className="session-stats">
-            <div>
-              <p className="stat-value">{dueCount}</p>
-              <p className="muted small">đến hạn</p>
-            </div>
-            <div>
-              <p className="stat-value">{freshCount}</p>
-              <p className="muted small">chưa học</p>
-            </div>
-            <div>
-              <p className="stat-value">{unlearnedCount}</p>
-              <p className="muted small">chưa thuộc</p>
-            </div>
-          </div>
-          <div className="row">
-            <button className="btn" onClick={() => start('due')} disabled={dueCount + freshCount === 0}>
-              Bắt đầu phiên ôn
-            </button>
-            <button className="btn-ghost" onClick={() => start('unlearned')} disabled={unlearnedCount === 0}>
-              Ôn các thẻ chưa thuộc
-            </button>
-          </div>
-          {dueCount + freshCount === 0 && nextDue && (
-            <p className="muted small">Không còn thẻ đến hạn. Thẻ tiếp theo đến hạn lúc {new Date(nextDue).toLocaleString('vi-VN')}.</p>
+          {deck === 'read' && !hasRead ? (
+            <p className="muted">Chưa có bài nào được đánh dấu đã học. Đọc một bài rồi bấm "Đánh dấu đã học xong" ở cuối bài, hoặc chọn bộ Tất cả.</p>
+          ) : (
+            <>
+              <div className="session-stats">
+                <div>
+                  <p className="stat-value">{dueCount}</p>
+                  <p className="stat-label">đến hạn</p>
+                </div>
+                <div>
+                  <p className="stat-value">{freshCount}</p>
+                  <p className="stat-label">chưa ôn</p>
+                </div>
+                <div>
+                  <p className="stat-value">{unlearnedCount}</p>
+                  <p className="stat-label">chưa thuộc</p>
+                </div>
+              </div>
+              <div className="row">
+                <button className="btn" onClick={() => start('due')} disabled={dueCount + freshCount === 0}>
+                  Bắt đầu phiên ôn
+                </button>
+                <button className="btn-ghost" onClick={() => start('unlearned')} disabled={unlearnedCount === 0}>
+                  Ôn các thẻ chưa thuộc
+                </button>
+              </div>
+              {dueCount + freshCount === 0 && nextDue && (
+                <p className="muted small">Không còn thẻ đến hạn. Thẻ tiếp theo đến hạn lúc {new Date(nextDue).toLocaleString('vi-VN')}.</p>
+              )}
+            </>
           )}
         </div>
       )}
@@ -134,19 +154,20 @@ export function Practice() {
       {queue && current && (
         <div className="flash rise" key={`${current.id}-${index}`}>
           <div className="flash-top">
-            <span className="muted small">{current.label}</span>
+            <a className="muted small" href={lessonHref(current.lesson.id)}>
+              Bài {current.lesson.id} · {current.lesson.titleText}
+            </a>
             <span className="mono small muted">
               {index + 1}/{queue.length}
             </span>
           </div>
-          <div className="meter">
-            <i style={{ transform: `scaleX(${index / queue.length})` }} />
-          </div>
-          <Html html={current.front} className="flash-front" />
+          <Meter value={index / queue.length} />
+          <Html html={current.q} className="flash-front" />
           <BoxDots box={progress.srs[current.id]?.box ?? 0} />
           {revealed ? (
             <div className="flash-back">
-              <Html html={current.back} />
+              <p className="answer-label">Trả lời mẫu</p>
+              <Html html={current.a} />
               <GradeButtons id={current.id} onGraded={onGraded} />
             </div>
           ) : (
@@ -160,7 +181,7 @@ export function Practice() {
       {queue && !current && (
         <div className="card session-start rise">
           <h2>Xong phiên ôn</h2>
-          <p className="muted">Đã ôn {queue.length} thẻ. Thẻ trả lời sai sẽ quay lại sau 1 phút.</p>
+          <p className="muted">Đã ôn {queue.length} thẻ. Thẻ trả lời sai quay lại sau 1 phút.</p>
           <button className="btn" onClick={() => setQueue(null)}>
             Về màn hình bắt đầu
           </button>

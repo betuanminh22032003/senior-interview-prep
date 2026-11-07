@@ -1,71 +1,44 @@
-import raw from './data/prep.json';
-import sqlRaw from './data/sql.json';
-import type { PrepData, SqlData } from './types';
+import raw from './data/book.json';
+import type { Book, Chapter, Lesson, Part, QA } from './types';
 
-export const data = raw as PrepData;
+export const book = raw as Book;
 
-export const sql = sqlRaw as SqlData;
+export const PARTS: Part[] = book.parts;
+export const CHAPTERS: Chapter[] = PARTS.flatMap((p) => p.chapters);
+/** Every lesson in reading order. */
+export const LESSONS: Lesson[] = CHAPTERS.flatMap((c) => c.lessons);
 
-export const SQL_SKILLS = sql.groups.flatMap((g) => g.skills);
+const lessonIndex = new Map(LESSONS.map((l, i) => [l.id, i]));
 
-export const GROUPS = [...new Set(data.cards.map((c) => c.group))];
+export const lessonById = (id: string): Lesson | undefined => {
+  const i = lessonIndex.get(id);
+  return i === undefined ? undefined : LESSONS[i];
+};
+export const chapterByNum = (num: number) => CHAPTERS.find((c) => c.num === num);
+export const partById = (id: string) => PARTS.find((p) => p.id === id);
+export const partOfChapter = (num: number) => PARTS.find((p) => p.chapters.some((c) => c.num === num))!;
 
-export const ALL_QAS = data.cards.flatMap((c) => c.qas);
+export const neighbours = (id: string) => {
+  const i = lessonIndex.get(id) ?? -1;
+  return { prev: i > 0 ? LESSONS[i - 1] : undefined, next: i >= 0 && i < LESSONS.length - 1 ? LESSONS[i + 1] : undefined };
+};
 
-/** One recall prompt per study item, used by the practice deck. */
-export interface StudyItem {
-  id: string;
-  deck: 'qa' | 'card' | 'keyword' | 'behavior' | 'sql';
-  label: string;
-  front: string;
-  back: string;
+/** One flashcard per interview question, tagged with the lesson and part it came from. */
+export interface Flashcard extends QA {
+  lesson: Lesson;
 }
 
-export const STUDY_ITEMS: StudyItem[] = [
-  ...ALL_QAS.map((q) => ({
-    id: q.id,
-    deck: 'qa' as const,
-    label: `${q.source} · ${q.sourceTitle}`,
-    front: q.q,
-    back: q.a,
-  })),
-  ...data.cards.map((c) => ({
-    id: `card-${c.id}`,
-    deck: 'card' as const,
-    label: `${c.code} · ${c.group}`,
-    front: `Giải thích dòng CV này đủ 3 tầng (làm gì, làm thế nào, sao biết là đúng): <strong>${c.title}</strong>`,
-    back: c.statusHtml + c.bodyHtml,
-  })),
-  ...data.keywords.map((k) => ({
-    id: k.id,
-    deck: 'keyword' as const,
-    label: k.group,
-    front: `Nói trong 30 giây: <strong>${k.keyword}</strong>`,
-    back: `<p>${k.say}</p>${k.evidence ? `<p class="muted">Bằng chứng thật: ${k.evidence}</p>` : ''}`,
-  })),
-  ...data.behavior.items.map((b) => ({
-    id: b.id,
-    deck: 'behavior' as const,
-    label: 'Câu hỏi hành vi',
-    front: b.question,
-    back: `<p>${b.story}</p><p class="muted">Nguồn: ${b.source}</p>`,
-  })),
-  ...SQL_SKILLS.flatMap((s) =>
-    s.qas.map((q) => ({
-      id: q.id,
-      deck: 'sql' as const,
-      label: `${s.code} · ${s.title}`,
-      front: q.q,
-      back: q.a,
-    })),
-  ),
-];
+export const CARDS: Flashcard[] = LESSONS.flatMap((l) => l.qas.map((q) => ({ ...q, lesson: l })));
 
-export const DECKS: { key: StudyItem['deck'] | 'all'; label: string }[] = [
-  { key: 'all', label: 'Tất cả' },
-  { key: 'qa', label: 'Câu hỏi xoáy' },
-  { key: 'card', label: 'Từng dòng CV' },
-  { key: 'keyword', label: 'Keyword' },
-  { key: 'behavior', label: 'Hành vi' },
-  { key: 'sql', label: 'Tối ưu SQL' },
-];
+export const TOTALS = {
+  parts: PARTS.length,
+  chapters: CHAPTERS.length,
+  lessons: LESSONS.length,
+  questions: CARDS.length,
+  exercises: LESSONS.reduce((n, l) => n + l.exercises.length, 0),
+  simulations: LESSONS.filter((l) => l.viz).length,
+  minutes: LESSONS.reduce((n, l) => n + l.minutes, 0),
+};
+
+export const lessonHref = (id: string) => `#/bai/${id}`;
+export const chapterHref = (num: number) => `#/chuong/${num}`;

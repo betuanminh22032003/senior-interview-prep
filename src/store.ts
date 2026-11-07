@@ -8,19 +8,25 @@ export interface SrsEntry {
 }
 
 interface Progress {
+  /** Flashcard memory per question id. */
   srs: Record<string, SrsEntry>;
-  checklist: Record<number, boolean>;
+  /** Checklist items ticked inside lessons. */
+  tasks: Record<string, boolean>;
+  /** Lessons marked as studied: id → time. */
+  read: Record<string, number>;
+  /** Last lesson opened, for "continue reading". */
+  last: string;
 }
 
-const KEY = 'senior-interview-prep:v1';
-const EMPTY: Progress = { srs: {}, checklist: {} };
+const KEY = 'senior-interview-prep:book-v1';
+const EMPTY: Progress = { srs: {}, tasks: {}, read: {}, last: '' };
 
 const MINUTE = 60_000;
 const DAY = 24 * 60 * MINUTE;
 // Leitner boxes: a wrong answer comes back within the session, a known one days later.
 const INTERVAL: Record<number, number> = { 1: MINUTE, 2: 10 * MINUTE, 3: DAY, 4: 3 * DAY, 5: 7 * DAY };
 
-/** An item counts as learned once it reaches box 3 (answered correctly at least twice in a row). */
+/** A card counts as learned once it reaches box 3 (answered correctly at least twice in a row). */
 export const LEARNED_BOX = 3;
 
 function load(): Progress {
@@ -52,13 +58,26 @@ export function useProgressState() {
     });
   }, []);
 
-  const toggleCheck = useCallback((index: number) => {
-    setProgress((p) => ({ ...p, checklist: { ...p.checklist, [index]: !p.checklist[index] } }));
+  const toggleTask = useCallback((id: string) => {
+    setProgress((p) => ({ ...p, tasks: { ...p.tasks, [id]: !p.tasks[id] } }));
+  }, []);
+
+  const toggleRead = useCallback((id: string) => {
+    setProgress((p) => {
+      const read = { ...p.read };
+      if (read[id]) delete read[id];
+      else read[id] = Date.now();
+      return { ...p, read };
+    });
+  }, []);
+
+  const visit = useCallback((id: string) => {
+    setProgress((p) => (p.last === id ? p : { ...p, last: id }));
   }, []);
 
   const reset = useCallback(() => setProgress(EMPTY), []);
 
-  return { progress, grade, toggleCheck, reset };
+  return { progress, grade, toggleTask, toggleRead, visit, reset };
 }
 
 export type ProgressApi = ReturnType<typeof useProgressState>;

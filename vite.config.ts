@@ -5,4 +5,6 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   base: './',
   plugins: [react()],
+  // The whole textbook ships as one JSON module (~1.5 MB, ~440 kB gzip).
+  build: { chunkSizeWarningLimit: 2000 },
 });
