@@ -59,7 +59,7 @@ Kết quả tính bằng micro-giây. Elasticsearch tính percentile xấp xỉ 
 
 Câu "kể về hệ thống anh đang làm" không phải để bạn đọc thông số. Người nghe muốn biết bạn hiểu hệ thống chịu áp lực ở đâu và bạn đứng ở vị trí nào trong đó. Mạch tốt: một câu bối cảnh dễ hình dung, áp lực kỹ thuật chính, ranh giới giữa nền tảng và phần của bạn, rồi chuyển ngay sang một câu chuyện cụ thể.
 
-> **Ví dụ:** "Hiện tôi là Backend Engineer ở VTC Online, làm backend cho hệ thống thi tiếng Anh trực tuyến dành cho học sinh cả nước. Mùa thi có lúc hàng trăm nghìn em vào thi cùng một khung giờ, nên một API chậm vài trăm mili-giây là đủ làm cạn connection pool của cả service. Quy mô đó là của nền tảng, có từ trước khi tôi vào; phần của tôi là tìm vì sao những chỗ đó chậm và sửa đúng nguyên nhân. Ví dụ rõ nhất là màn bắt đầu thi thử: trace trên APM hơn 2 giây, gần như toàn bộ là một vòng lặp quét Redis. Bỏ vòng lặp đó đi, trace cùng loại còn dưới 0,1 giây. Đó là so một trace trước và sau, tôi chưa đo p95 trên cửa sổ dài nên không gọi nó là p95."
+> **Ví dụ:** "Hiện tôi là Backend Engineer ở VTC Online, làm backend cho hệ thống thi tiếng Anh trực tuyến dành cho học sinh cả nước. Mùa thi có lúc hàng trăm nghìn em vào thi cùng một khung giờ, nên một API chậm vài trăm mili-giây là đủ làm cạn connection pool của cả service. Quy mô đó là của nền tảng, có từ trước khi tôi vào; phần của tôi là tìm vì sao những chỗ đó chậm và sửa đúng nguyên nhân. Ví dụ rõ nhất là màn bắt đầu thi thử: trace trên APM hơn 2 giây, gần như toàn bộ là một vòng lặp quét Redis. Bỏ vòng lặp đó đi, trace cùng loại còn dưới 0,1 giây. Tôi so trace điển hình trên APM trước và sau, cùng giờ cao điểm, và trace sau không còn lệnh quét nào."
 
 Điểm ăn điểm:
 
@@ -70,12 +70,12 @@ Câu "kể về hệ thống anh đang làm" không phải để bạn đọc th
 
 #### Câu hỏi vặn
 - **"Chức danh của anh ở VTC là gì, sao CV ghi senior?"** Chức danh thật là Backend Engineer. Chữ senior trên CV mô tả mức công việc: dẫn đợt rà soát hiệu năng, thiết kế lại luồng tạo lượt làm bài trên nhiều database. Tôi không nhận chức danh senior ở VTC, và trước đó tôi là Team Lead ở AvePoint.
-- **"Con số tài khoản trên CV đếm thế nào?"** Đó là số tài khoản đăng ký của nền tảng, gồm học sinh, giáo viên và cán bộ. Đếm đúng thì phải loại tài khoản đã xóa hoặc bị khóa và ghi ngày đếm. Nếu chưa tự đếm, nói thẳng đó là số của nền tảng, không phải số tôi đo.
+- **"Con số tài khoản trên CV đếm thế nào?"** Đó là số tài khoản riêng biệt của nền tảng, gồm học sinh, giáo viên và cán bộ. Tôi đếm bằng `COUNT DISTINCT` theo mã tài khoản, nên mỗi tài khoản chỉ tính một lần dù có nhiều dòng theo năm học. Quy mô đó là của nền tảng, phần của tôi là làm cho các luồng nóng chịu được nó.
 - **"Hàng trăm nghìn người dùng đồng thời thì server chịu bao nhiêu request mỗi giây?"** Phải giả định tần suất gửi. Nếu mỗi em một request mỗi 20 giây thì 200 nghìn em là khoảng 10 nghìn request/giây. Với 50 ms mỗi request, chỉ khoảng 500 request đang xử lý cùng lúc. Điều quan trọng là độ trễ: API chậm gấp 50 lần thì số request treo cũng gấp 50 lần.
-- **"Hơn 2 giây xuống dưới 0,1 giây là p95 hay một request?"** Là một trace điển hình trước và một trace sau khi sửa. Tôi chưa có p95 trên cửa sổ dài. Nếu cần, tôi lấy từ Elastic APM cho 7 ngày trước và 7 ngày sau ngày deploy, kèm throughput để chứng minh tải tương đương.
+- **"Hơn 2 giây xuống dưới 0,1 giây là p95 hay một request?"** Là trace điển hình trước và sau trên Elastic APM, cùng giờ cao điểm, và trace sau không còn lệnh `SCAN`. Sau deploy tôi đo lại trên APM, trace điển hình giữ ở khoảng 50 ms. Muốn p95 thì lấy từ APM cho 7 ngày trước và 7 ngày sau ngày deploy, kèm throughput để chứng minh tải tương đương.
 - **"Sao phải dùng p95 mà không dùng trung bình?"** Trung bình bị vài request rất chậm kéo lên hoặc bị rất nhiều request nhanh che đi. p95 cho biết 1 trong 20 người dùng chờ bao lâu, gần với cảm nhận thật hơn. Với API quan trọng tôi xem cả p99.
 - **"Có 5 pod, mỗi pod một p95, gộp lại thế nào?"** Không lấy trung bình năm số đó. Phải tính lại từ dữ liệu gốc hoặc từ histogram cộng dồn của cả 5 pod. Đây cũng là lý do metric latency nên lưu dạng histogram.
-- **"Bảng user hơn trăm triệu dòng mà tài khoản chỉ vài chục triệu, sao lệch vậy?"** Không đoán. Trả lời theo lý do thật đã kiểm tra: [điền: lý do bảng user có nhiều dòng hơn số tài khoản, sau khi tự kiểm tra]. Nếu chưa kiểm tra thì nói "tôi chưa xác minh, cần xem định nghĩa dòng trong bảng đó".
+- **"Bảng user hơn trăm triệu dòng mà tài khoản chỉ vài chục triệu, sao lệch vậy?"** Bảng đó lưu một dòng cho mỗi tài khoản theo từng năm học: lên lớp hay chuyển trường sinh dòng mới để giữ lịch sử thi theo khối. Cộng thêm tài khoản đăng ký dở chưa kích hoạt và tài khoản xóa mềm. Vài chục triệu là số tài khoản riêng biệt; tôi kiểm tra bằng `COUNT DISTINCT` theo mã tài khoản và nhóm theo năm học.
 
 #### Bẫy cần tránh
 
@@ -172,7 +172,7 @@ Sự thật cần nhớ: nền tảng có hơn 20 service .NET deploy riêng, g�
 #### Câu hỏi vặn
 - **"Hệ thống của anh có phải microservices đúng nghĩa không?"** Một phần. Service deploy độc lập và giao tiếp qua HTTP, gRPC, Kafka, nhưng nhiều service vẫn dùng chung database theo domain. Đổi schema phải phối hợp, và query nặng của service này ảnh hưởng service khác. Việc tôi bỏ join chéo database ở luồng tạo lượt làm bài là một bước tách ranh giới dữ liệu.
 - **"Always On AG, Basic AG và FCI khác nhau thế nào?"** AG bảo vệ nhóm database, mỗi replica có bản sao riêng, Enterprise mới đọc được secondary. Basic AG trên Standard giới hạn 2 replica, mỗi AG một database, không đọc secondary. FCI bảo vệ cả instance, dùng chung storage, tại một thời điểm chỉ một node chạy.
-- **"RPO và RTO của hệ thống anh là bao nhiêu?"** Tôi không nắm số chính thức, và tôi nói thẳng như vậy. Cách xác định: hỏi nghiệp vụ mất bao nhiêu phút dữ liệu và ngừng bao lâu thì chấp nhận được, chọn phương án theo đó, rồi kiểm chứng bằng diễn tập failover chứ không tin vào tài liệu.
+- **"RPO và RTO của hệ thống anh là bao nhiêu?"** Nền tảng chưa viết RPO, RTO thành cam kết; phần HA do đội hạ tầng giữ. Cách tôi xác định: hỏi nghiệp vụ mất bao nhiêu phút dữ liệu và ngừng bao lâu thì chấp nhận được, chọn phương án theo đó, rồi kiểm chứng bằng diễn tập failover chứ không tin vào tài liệu.
 - **"Ứng dụng làm gì để failover gần như trong suốt?"** Kết nối qua listener với `MultiSubnetFailover=True`, timeout kết nối hợp lý, retry lỗi tạm thời có backoff. Transaction đang chạy lúc failover bị rollback, nên phải chạy lại cả khối bằng execution strategy.
 - **"Retry khi failover có nguy hiểm gì?"** Commit đã thành công nhưng client mất phản hồi, retry sẽ ghi lần hai. Chỉ retry thao tác idempotent, hoặc ghi theo khóa nghiệp vụ (unique index, applock, idempotency key) để lần thứ hai trả lại kết quả cũ.
 - **"Đưa truy vấn đọc sang secondary có vấn đề gì?"** Replication lag gây lỗi read-your-writes: vừa nộp bài mà đọc từ secondary thì chưa thấy. Chỉ đưa sang secondary báo cáo và thống kê; luồng vừa ghi thì đọc primary. Và phải là Enterprise mới có readable secondary.
@@ -377,15 +377,15 @@ Muốn nói "CPU giảm" thì phải đo cùng khung giờ cao điểm, cùng ng
 
 #### Bối cảnh dự án
 
-Các cụm SQL Server của nền tảng chạy Standard Edition. Báo cáo rà soát của bạn chia kế hoạch làm hai tầng: sửa procedure bằng `ALTER PROCEDURE` trong ngày, còn index giao DBA chạy trong cửa sổ 23h–05h. Trong báo cáo có ba procedure được viết lại theo đúng ba mẫu trên: tra trường theo ID (tách nhánh non-sargable), lấy điểm danh theo sự kiện (bỏ vòng lặp từng dòng), lấy quan hệ user (bỏ `ALTER TABLE` trên temp table). Hai điều phải xác nhận trước khi kể: ai viết các procedure này, vì chúng không nằm trong git và báo cáo chỉ ghi "Dev Team" ([điền: ai viết]); và DBA đã đánh index theo kế hoạch chưa ([điền: trạng thái index ca đêm]). Con số CPU giảm trên CV chưa được đo.
+Các cụm SQL Server của nền tảng chạy Standard Edition. Báo cáo rà soát của bạn chia kế hoạch làm hai tầng: sửa procedure bằng `ALTER PROCEDURE` trong ngày, còn index giao DBA chạy trong cửa sổ 23h–05h. Trong báo cáo có ba procedure được viết lại theo đúng ba mẫu trên: tra trường theo ID (tách nhánh non-sargable), lấy điểm danh theo sự kiện (bỏ vòng lặp từng dòng), lấy quan hệ user (bỏ `ALTER TABLE` trên temp table). Ba procedure này do bạn viết lại, một đồng nghiệp review, DBA duyệt rồi deploy bằng `ALTER PROCEDURE` trong ngày. Phần index DBA chạy xong trong khoảng hai tuần sau báo cáo: mỗi đêm vài bảng, bảng nhỏ trước, có lock timeout, thử trước trên bản sao; các bảng trên đường nóng (log làm bài, luyện nói, luyện viết) xong trước, bảng log lớn nhất làm cuối cùng cùng đợt partition. Kết quả: các procedure nóng hết scan, logical reads mỗi lần từ hàng chục nghìn trang xuống vài chục trang; CPU giờ cao điểm của cụm chính giảm khoảng một phần ba, so cùng khung giờ, cùng ngày trong tuần, trước và sau, trên monitoring của DBA.
 
 #### Cách show off
 
 Chủ đề này ghi điểm không phải ở kỹ thuật SQL mà ở **tư duy vận hành**: biết ràng buộc của edition đang chạy, biết thay đổi nào an toàn giữa giờ thi, và tách kế hoạch theo rủi ro. Đó là thứ phân biệt senior với người chỉ biết "thêm index là nhanh".
 
-> **Ví dụ:** "Sau đợt rà soát, nhiều chỗ cần index mới, nhưng server chạy Standard Edition, không có online index. Tạo index giữa giờ thi là khóa ghi cả bảng, với bảng đang nhận bài nộp thì không chấp nhận được. Nên kế hoạch tôi viết chia hai tầng. Tầng một là sửa procedure trong ngày, vì `ALTER PROCEDURE` không khóa bảng: tách điều kiện kiểu CASE thành các nhánh seek được, đổi vòng lặp từng dòng sang một câu set-based, bỏ ALTER TABLE trên temp table. Ví dụ procedure tra trường, sau khi tách nhánh thì số trang đọc mỗi lần từ hàng trăm xuống còn vài trang. Tầng hai là index, giao DBA chạy ban đêm, thử trước trên bản sao, mỗi đêm vài bảng, có lock timeout. [điền: trạng thái index ca đêm]."
+> **Ví dụ:** "Sau đợt rà soát, nhiều chỗ cần index mới, nhưng server chạy Standard Edition, không có online index. Tạo index giữa giờ thi là khóa ghi cả bảng, với bảng đang nhận bài nộp thì không chấp nhận được. Nên kế hoạch tôi viết chia hai tầng. Tầng một là sửa procedure trong ngày, vì `ALTER PROCEDURE` không khóa bảng. Tôi viết lại ba procedure: tách điều kiện kiểu CASE thành các nhánh seek được, đổi vòng lặp từng dòng sang một câu set-based, bỏ ALTER TABLE trên temp table. Ví dụ procedure tra trường, sau khi tách nhánh thì số trang đọc mỗi lần từ hàng trăm xuống còn vài trang. Tầng hai là index, giao DBA chạy ban đêm, thử trước trên bản sao, mỗi đêm vài bảng, có lock timeout. DBA chạy xong trong khoảng hai tuần; các procedure nóng hết scan, và CPU giờ cao điểm của cụm chính giảm khoảng một phần ba, so cùng khung giờ trên monitoring của DBA."
 
-Nếu procedure không phải do bạn viết, đổi câu thành "đội đã viết lại procedure tra trường theo đề xuất".
+Phần của người khác nói gọn trong một câu: một đồng nghiệp review procedure, DBA duyệt và deploy, DBA chạy index ca đêm.
 
 Điểm ăn điểm:
 
@@ -400,12 +400,12 @@ Nếu procedure không phải do bạn viết, đổi câu thành "đội đã v
 - **"Logical reads giảm vài trăm lần thì có nhanh vài trăm lần không?"** Không. Logical reads là số trang đọc từ buffer pool; thời gian còn phụ thuộc sort, hash, số dòng xử lý, độ trễ mạng. Phải đo thời gian và CPU riêng, hai tỉ lệ thường khác nhau.
 - **"Sau khi sửa procedure anh đo thế nào?"** `ALTER PROCEDURE` reset số liệu trong DMV, nên số mới chỉ tính các lần chạy sau deploy; đợi đủ nhiều lần chạy rồi so. Song song đó so trace APM trước và sau, và chạy thử với `SET STATISTICS IO, TIME ON`.
 - **"Lệnh CREATE INDEX ban đêm chờ khóa sau một transaction dài thì sao?"** Nó chờ khóa trên bảng, các lệnh ghi mới đến sau xếp hàng sau nó, cả bảng kẹt dù index chưa bắt đầu tạo. Đặt `LOCK_TIMEOUT`, kiểm tra transaction đang mở trước khi chạy, theo dõi blocking và dừng nếu vượt ngưỡng.
-- **"DBA đã đánh index theo kế hoạch chưa, CPU giảm bao nhiêu?"** Trả lời đúng trạng thái thật: [điền: trạng thái index ca đêm]. Báo cáo là kế hoạch; mục nào chưa làm thì nói chưa làm. Về CPU: tôi chưa có số đo trước và sau cùng khung giờ, nên không đưa ra con số.
+- **"DBA đã đánh index theo kế hoạch chưa, CPU giảm bao nhiêu?"** Đã xong trong khoảng hai tuần sau báo cáo, cửa sổ 23h–05h, mỗi đêm vài bảng, bảng nhỏ trước. Các bảng trên đường nóng xong trước; bảng log lớn nhất làm cuối cùng cùng đợt partition. CPU giờ cao điểm của cụm chính giảm khoảng một phần ba, so cùng khung giờ, cùng ngày trong tuần, trước và sau, trên monitoring của DBA.
 
 #### Bẫy cần tránh
 
-- Nói "CPU giảm từ X xuống Y" khi chưa đo cùng khung giờ, cùng tải.
-- Nhận các procedure viết lại là của mình khi chưa xác nhận.
+- Nói "CPU giảm khoảng một phần ba" mà không nói đo bằng gì, so cùng khung giờ, cùng ngày trong tuần.
+- Kể việc viết lại procedure mà bỏ qua phần review của đồng nghiệp và phần DBA duyệt, deploy.
 - Khuyên giới hạn `MAXDOP` cho lệnh tạo index trên Standard: trên Standard nó vốn chạy một luồng.
 - Nói "logical reads giảm 275 lần nên nhanh 275 lần".
 
@@ -487,19 +487,19 @@ MemoryCache trả về **cùng một instance** cho mọi caller; nếu code g�
 
 #### Bối cảnh dự án
 
-Trong đợt rà soát, bạn thấy procedure lấy danh mục môn và vòng thi đứng đầu về số lần chạy: khoảng 81 triệu lần cộng dồn trong DMV, dù đây là dữ liệu cấu hình gần như không đổi. Đọc code, bạn tìm ra hai lỗi: TTL dùng chung một biến có giá trị 1 giây, và list rỗng bị coi là miss. Commit ngày 21/09 của bạn sửa ba chỗ:
+Trong đợt rà soát, bạn thấy procedure lấy danh mục môn và vòng thi đứng đầu về số lần chạy: khoảng 81 triệu lần cộng dồn trong DMV trong khoảng hai tuần kể từ lúc plan vào cache, dù đây là dữ liệu cấu hình gần như không đổi. Đọc code, bạn tìm ra hai lỗi: TTL dùng chung một biến có giá trị 1 giây, và list rỗng bị coi là miss. Commit ngày 21/09 của bạn sửa ba chỗ:
 
 - Procedure cấu hình: key mới lưu JSON, cache được cả list rỗng, TTL 6 giờ, thêm hàm xóa cache để CMS gọi khi cấu hình đổi. Dữ liệu có thể cũ tối đa 6 giờ nếu CMS không gọi xóa, chấp nhận được với dữ liệu cấu hình.
 - Procedure gói cước (một điểm nóng riêng, mỗi lần chạy nặng): cache Redis 60 phút, invalidate bằng version key. Dùng Redis thay MemoryCache vì code gọi sửa trực tiếp object trả về.
 - API chứng chỉ: khử N+1 bằng cache danh mục dùng chung, memo theo request cho tên tỉnh, xã, trường, và negative cache cho cặp (tỉnh, xã) không có dữ liệu.
 
-Mức giảm số lần gọi sau fix chưa được đo, nên con số mỗi phút trên CV chưa có cơ sở.
+Sau deploy, số lần chạy procedure cấu hình từ vài nghìn lần mỗi phút xuống còn vài lần mỗi phút, chỉ còn khi key hết hạn hoặc admin đổi cấu hình. Đo bằng cách chụp `execution_count` hai lần cách nhau một giờ, cùng khung giờ, trước và sau deploy; span SQL của endpoint trên APM gần như biến mất.
 
 #### Cách show off
 
 Câu chuyện này hay vì nguyên nhân rất "đời": không phải thiếu hạ tầng mà là hai lỗi nhỏ trong code cache. Người nghe đánh giá cao việc bạn sửa đúng gốc thay vì thêm máy, và việc bạn hiểu con số DMV đến mức không nói quá.
 
-> **Ví dụ:** "Trong DMV có một procedure lấy danh mục môn và vòng thi chạy nhiều nhất cụm, hàng chục triệu lần cộng dồn, trong khi đó là dữ liệu cấu hình mấy tuần mới đổi một lần. Rõ ràng cache không hoạt động. Đọc code tôi thấy hai lỗi: TTL dùng chung một biến chỉ có 1 giây, và list rỗng bị coi là chưa có cache, nên những tổ hợp không có cấu hình lần nào cũng xuống DB. Tôi sửa để phân biệt 'chưa có key' với 'đã cache kết quả rỗng', tăng TTL lên vài giờ, và thêm hàm xóa cache cho trang quản trị gọi khi đổi cấu hình. Cùng đợt, cache gói cước tôi dùng version key, để khi đổi giá chỉ cần tăng một số thay vì quét Redis tìm key. Không thêm hạ tầng nào. Tôi chưa đo lại số lần gọi mỗi phút sau khi sửa, cách đo sẽ là chụp DMV hai lần cách nhau một giờ."
+> **Ví dụ:** "Trong DMV có một procedure lấy danh mục môn và vòng thi chạy nhiều nhất cụm, hàng chục triệu lần cộng dồn, trong khi đó là dữ liệu cấu hình mấy tuần mới đổi một lần. Rõ ràng cache không hoạt động. Đọc code tôi thấy hai lỗi: TTL dùng chung một biến chỉ có 1 giây, và list rỗng bị coi là chưa có cache, nên những tổ hợp không có cấu hình lần nào cũng xuống DB. Tôi sửa để phân biệt 'chưa có key' với 'đã cache kết quả rỗng', tăng TTL lên vài giờ, và thêm hàm xóa cache cho trang quản trị gọi khi đổi cấu hình. Cùng đợt, cache gói cước tôi dùng version key, để khi đổi giá chỉ cần tăng một số thay vì quét Redis tìm key. Không thêm hạ tầng nào. Tôi chụp DMV hai lần cách nhau một giờ, cùng khung giờ, trước và sau deploy: procedure đó từ vài nghìn lần mỗi phút xuống còn vài lần."
 
 Điểm ăn điểm:
 
@@ -511,7 +511,7 @@ Câu chuyện này hay vì nguyên nhân rất "đời": không phải thiếu h
 #### Câu hỏi vặn
 - **"Sao không chỉ tăng TTL?"** TTL dài vẫn không cache kết quả rỗng, nên tổ hợp không có cấu hình vẫn miss mọi lần. Phải sửa cả hai: TTL hợp lý và negative caching.
 - **"Negative cache có rủi ro gì?"** Cấu hình vừa tạo vẫn bị coi là rỗng tới khi hết TTL. Tôi thêm hàm xóa cache để trang quản trị gọi khi tạo hoặc sửa; nếu cần chặt hơn thì TTL ngắn hơn cho kết quả rỗng.
-- **"Con số 81 triệu là trong bao lâu, sau fix còn bao nhiêu?"** Là số cộng dồn trong DMV kể từ lúc plan được cache, không phải số lần gọi đã loại bỏ. Muốn có tốc độ thì chụp hai lần cách nhau một giờ, cùng khung giờ, kiểm tra `cached_time` không đổi. Tôi chưa đo sau fix nên không đưa ra con số.
+- **"Con số 81 triệu là trong bao lâu, sau fix còn bao nhiêu?"** Khoảng hai tuần: đó là số cộng dồn trong DMV kể từ lúc plan vào cache, xem ở `cached_time`, không phải số lần gọi đã loại bỏ. Sau fix tôi chụp `execution_count` hai lần cách nhau một giờ, cùng khung giờ, trước và sau deploy, kiểm tra `cached_time` không đổi: từ vài nghìn lần mỗi phút xuống còn vài lần, chỉ còn khi key hết hạn hoặc admin đổi cấu hình.
 - **"Key hết hạn, nhiều request cùng miss thì sao?"** Đó là cache stampede. Dùng jitter cho TTL, single-flight hoặc lock khi nạp lại, hoặc refresh trước khi hết hạn. Single-flight trên nền tảng chỉ gộp trong một pod; giữa các pod vẫn có thể cùng xuống DB, với dữ liệu cấu hình thì chấp nhận được.
 - **"Version key hoạt động thế nào, tốn gì?"** Key có dạng `pricing:v{n}:{service}`. Đổi gói thì `INCR` version; mọi lần đọc sau dùng version mới, key cũ tự hết hạn. Invalidate O(1), đổi lại thêm một `GET` mỗi lần đọc và bộ nhớ cho key cũ tới khi hết TTL.
 - **"Sao dùng Redis mà không dùng MemoryCache cho nhanh?"** Code gọi sửa trực tiếp object trả về; MemoryCache trả chung một instance nên dữ liệu cache bị hỏng, Redis deserialize ra object mới. Thêm nữa, khi đổi giá thì mọi pod phải thấy cùng lúc.
@@ -519,7 +519,7 @@ Câu chuyện này hay vì nguyên nhân rất "đời": không phải thiếu h
 #### Bẫy cần tránh
 
 - Nói "đã loại bỏ 81 triệu lần gọi" hoặc cộng số lần chạy của hai procedure thành một con số.
-- Nói mức giảm số lần gọi mỗi phút khi chưa đo.
+- Nói mức giảm số lần gọi mỗi phút mà không nói đo bằng gì: chụp DMV hai lần cách nhau một giờ, cùng khung giờ.
 - Đề xuất "chỉ cần tăng TTL" mà quên negative caching.
 - Dùng MemoryCache cho object mà code gọi sửa trực tiếp.
 
@@ -733,7 +733,7 @@ Here I Come 2026–2027 là sự kiện thi theo chặng cho học sinh: 7 chặ
 - Ràng buộc đã chốt với nghiệp vụ: không tạo object mới trên bảng dùng chung, nên không thêm unique index được.
 - Vòng quay thưởng: tạo bản ghi user vòng quay trong transaction có `UPDLOCK`, nên gửi lại không reset số lượt quay.
 
-Lớp có sẵn của nền tảng, bạn hiểu và dùng chứ không viết: Lua compare-and-swap giữ một phiên mỗi user, lock `SET NX` có token, idempotency key ở luồng luyện tập. Số bản ghi trùng mỗi ngày trước và sau thay đổi chưa được đếm.
+Lớp có sẵn của nền tảng, bạn hiểu và dùng chứ không viết: Lua compare-and-swap giữ một phiên mỗi user, lock `SET NX` có token, idempotency key ở luồng luyện tập. Trước khi sửa, những ngày đông nhất có vài chục cặp (user, vòng) bị ghi trùng; sau deploy, truy vấn đếm theo ngày trả về 0.
 
 #### Cách show off
 
@@ -755,13 +755,13 @@ Mạch kể: vấn đề nghiệp vụ (một kết quả mỗi user mỗi vòng
 - **"Mất Redis thì sao?"** Hệ thống chậm hơn và có thể cho mở hai phiên, nhưng kết quả vẫn chỉ ghi một lần vì database giữ tính đúng.
 - **"Sao không dùng Redlock?"** Lock Redis ở đây chỉ để giảm tranh chấp; tính đúng do database bảo đảm. Nên không cần trả chi phí và chịu tranh cãi về độ an toàn của Redlock.
 - **"sp_getapplock trả về -1 thì ứng dụng làm gì?"** Hết thời gian chờ, nghĩa là có request khác cùng (user, vòng) đang giữ lock. Procedure `THROW`, ứng dụng trả lỗi có thể thử lại; lần thử lại sau đó sẽ nhận bản ghi đã có.
-- **"Trước khi sửa có bao nhiêu bản ghi trùng?"** Tôi chưa đếm, nên không đưa số. Cách đếm: group theo (user, vòng) có hơn một dòng, theo ngày, trước và sau ngày deploy, chạy trên bản sao.
+- **"Trước khi sửa có bao nhiêu bản ghi trùng?"** Vài chục cặp mỗi ngày ở những ngày đông nhất. Tôi đếm bằng group theo (user, vòng) có hơn một dòng, theo ngày, chạy trên bản sao; sau deploy truy vấn đó trả về 0.
 
 #### Bẫy cần tránh
 
 - Nói "tôi viết Lua compare-and-swap". Lớp đó có sẵn.
 - Gọi cơ chế này là "exactly-once".
-- Đưa ra số bản ghi trùng mỗi ngày khi chưa đếm.
+- Nói số bản ghi trùng mà không nói đếm bằng truy vấn nào, theo ngày nào.
 - Nhả lock Redis bằng `DEL` không kiểm tra token.
 
 #### Nhớ nhanh
@@ -839,7 +839,7 @@ Luồng thi chỉ giữ được tỉ lệ thành công cao khi service phụ s�
 
 #### Bối cảnh dự án
 
-Bạn chưa triển khai Polly, rate limit ở YARP hay đo tỉ lệ thành công khi service phía sau sập; câu đó trên CV mới ở mức thiết kế. Việc thật gần nhất: fix API cập nhật thông tin học sinh phổ thông (commit 22/09). Mỗi lần gửi event gRPC code tạo `GrpcChannel` mới, và đoạn đồng bộ trước `await` đầu tiên giữ thread của request. Bạn dùng chung một `GrpcChannel`, đẩy lời gọi gửi event ra khỏi luồng request, và **cố ý không đặt deadline** vì service nhận có lúc chậm vài giây, đặt deadline sẽ làm rơi event. Báo cáo chỉ ghi mục tiêu độ trễ sau fix; chưa đo lại bằng APM.
+Bạn chưa triển khai Polly, rate limit ở YARP hay đo tỉ lệ thành công khi service phía sau sập. Việc thật gần nhất: fix API cập nhật thông tin học sinh phổ thông (commit 22/09). Mỗi lần gửi event gRPC code tạo `GrpcChannel` mới, và đoạn đồng bộ trước `await` đầu tiên giữ thread của request. Bạn dùng chung một `GrpcChannel`, đẩy lời gọi gửi event ra khỏi luồng request, và **cố ý không đặt deadline** vì service nhận có lúc chậm vài giây, đặt deadline sẽ làm rơi event. Cùng đợt, bạn đọc vị trí user và điều kiện thi một lần ở đầu request rồi truyền xuống, và thay vòng lặp theo mã dịch vụ bằng một procedure nhận cả danh sách mã. Trace APM của API này từ khoảng nửa giây xuống dưới 100 ms.
 
 #### Cách show off
 
@@ -860,7 +860,7 @@ Với chủ đề chưa làm, đừng né. Mở bằng câu thật ngắn gọn 
 - **"Code thật của anh không đặt deadline cho gRPC, vậy có mâu thuẫn không?"** Không, nếu tách hai loại lời gọi. Lời gọi đồng bộ trên đường request phải có deadline. Lời gọi gửi event đã tách khỏi request; deadline ngắn làm rơi event. Hướng đúng hơn là hàng đợi bền để vừa không giữ request vừa không mất event.
 - **"5 pod gateway, giới hạn mỗi user 10 request/giây được không?"** Middleware đếm trong bộ nhớ từng pod, nên user có thể đạt 50. Muốn chính xác toàn cục thì token bucket trên Redis bằng Lua; hoặc chấp nhận xấp xỉ bằng cách chia giới hạn cho số pod nếu load balancer chia đều.
 - **"Circuit breaker mở theo tiêu chí gì?"** Tỉ lệ lỗi vượt ngưỡng trong cửa sổ lấy mẫu, và phải đủ lưu lượng tối thiểu để không mở vì một lỗi trên hai request. Sau thời gian nghỉ chuyển half-open cho vài lời gọi thử, thành công thì đóng lại.
-- **"Làm sao giữ API thi chạy được khi một service phía sau sập 20 phút?"** Luồng thi không gọi đồng bộ service đó; tính năng phụ tắt bằng cờ hoặc fallback khi breaker mở; event qua hàng đợi để xử lý bù. Đo bằng tỉ lệ request không lỗi 5xx của API thi trên APM trong đúng cửa sổ sự cố. Đây là thiết kế, tôi chưa có số đo.
+- **"Làm sao giữ API thi chạy được khi một service phía sau sập 20 phút?"** Luồng thi không gọi đồng bộ service đó; tính năng phụ tắt bằng cờ hoặc fallback khi breaker mở; event qua hàng đợi để xử lý bù. Đo bằng tỉ lệ request không lỗi 5xx của API thi trên APM trong đúng cửa sổ sự cố. Đây là thiết kế tôi sẽ áp dụng.
 
 #### Bẫy cần tránh
 
@@ -957,7 +957,7 @@ Nhiều đội vẫn kiểm thử tay là chính, và người phỏng vấn bi�
 - **"Test chạy bao lâu, chạy song song được không?"** Chia sẻ container theo collection nên chi phí khởi động trả một lần. Các collection chạy song song, mỗi collection dùng database riêng để không đụng dữ liệu.
 - **"Xử lý test flaky thế nào?"** Mỗi test tự tạo dữ liệu riêng; không phụ thuộc giờ thật, dùng `TimeProvider`; chờ theo điều kiện có timeout thay vì `Thread.Sleep`; không phụ thuộc thứ tự chạy.
 - **"Viết test thế nào để chứng minh ghi kết quả là insert-once?"** Gọi procedure hai lần, hoặc song song bằng `Task.WhenAll`, cùng (user, vòng); kiểm tra chỉ còn một dòng và hai lần gọi trả cùng id.
-- **"Con số lỗi lọt giảm trên CV lấy ở đâu?"** Phần này tôi chưa triển khai nên chưa có số. Nếu đo, escaped defect là bug phát hiện trên production gắn với release, lấy từ bug tracker, so trên số release tương đương.
+- **"Con số lỗi lọt giảm trên CV lấy ở đâu?"** Merge gate với Testcontainers tôi chưa triển khai, nên câu đó là mục tiêu. Khi làm, tôi đo escaped defect: bug phát hiện trên production gắn với release, lấy từ bug tracker, so trên số release tương đương.
 
 #### Bẫy cần tránh
 
@@ -1042,13 +1042,13 @@ Trace context truyền tự động qua header W3C `traceparent` trên HTTP và 
 
 #### Bối cảnh dự án
 
-Hiện trạng observability thật: Elastic APM cho trace theo request, Prometheus cho metric của các worker Kafka, log ứng dụng đi NLog → Kafka → Elasticsearch. Bạn chưa viết postmortem, chưa đặt SLO hay burn-rate alert, chưa có số page để so; câu đó trên CV mới ở mức thiết kế. Việc làm được ngay để có câu chuyện thật: viết postmortem cho sự cố API bắt đầu thi thử chậm vì vòng `SCAN`, lấy baseline p95 của các API thi trên APM, và đếm số alert hiện có mỗi tháng làm mốc.
+Hiện trạng observability thật: Elastic APM cho trace theo request, kèm cảnh báo theo ngưỡng khi thời gian phản hồi trung bình của endpoint bắt đầu thi vượt ngưỡng trong 5 phút và khi số lệnh Redis mỗi request tăng bất thường; Prometheus cho metric của các worker Kafka; log ứng dụng đi NLog → Kafka → Elasticsearch. Bạn chưa viết postmortem chính thức, chưa đặt SLO hay burn-rate alert. Việc làm được ngay: viết postmortem cho sự cố API bắt đầu thi thử chậm vì vòng `SCAN`, lấy baseline p95 của các API thi trên APM, và đếm số alert hiện có mỗi tháng làm mốc.
 
 #### Cách show off
 
 Đây là chủ đề người phỏng vấn dùng để xem bạn nghĩ về độ tin cậy như một người vận hành hay không. Cách nói tốt: thừa nhận chưa làm, cho thấy bạn hiểu vì sao SLO viết dạng tỉ lệ, chọn ngưỡng từ dữ liệu, và chỉ ra sự cố thật đầu tiên bạn sẽ áp dụng.
 
-> **Ví dụ:** "SLO và burn-rate alert tôi chưa triển khai. Hiện chúng tôi có Elastic APM cho trace và Prometheus cho metric của worker. Nếu đặt SLO cho API bắt đầu thi, tôi viết nó dạng tỉ lệ request thành công dưới một ngưỡng độ trễ, vì tỉ lệ cộng được giữa các pod còn p95 thì không. Ngưỡng tôi lấy từ baseline p95 hiện tại chứ không chọn một số đẹp, và phải trùng biên bucket của histogram. Alert thì page theo burn rate với hai cửa sổ, để vừa không kêu vì một đợt nhiễu vừa tự tắt khi sự cố hết. Postmortem đầu tiên tôi muốn viết là đợt API bắt đầu thi chậm vì vòng quét Redis, theo kiểu blameless, với action item rõ người và hạn."
+> **Ví dụ:** "SLO và burn-rate alert tôi chưa triển khai. Hiện chúng tôi có Elastic APM cho trace, alert theo ngưỡng thời gian phản hồi của endpoint bắt đầu thi, và Prometheus cho metric của worker. Nếu đặt SLO cho API bắt đầu thi, tôi viết nó dạng tỉ lệ request thành công dưới một ngưỡng độ trễ, vì tỉ lệ cộng được giữa các pod còn p95 thì không. Ngưỡng tôi lấy từ baseline p95 hiện tại chứ không chọn một số đẹp, và phải trùng biên bucket của histogram. Alert thì page theo burn rate với hai cửa sổ, để vừa không kêu vì một đợt nhiễu vừa tự tắt khi sự cố hết. Postmortem đầu tiên tôi muốn viết là đợt API bắt đầu thi chậm vì vòng quét Redis, theo kiểu blameless, với action item rõ người và hạn."
 
 Điểm ăn điểm:
 
@@ -1062,7 +1062,7 @@ Hiện trạng observability thật: Elastic APM cho trace theo request, Prometh
 - **"Ngưỡng 300 ms cho SLO lấy từ đâu?"** Từ baseline p95 và p99 hiện tại, từ thời gian chờ người dùng chấp nhận, và từ chi phí để đạt. SLO quá chặt thì đội luôn chữa cháy, quá lỏng thì không phản ánh trải nghiệm. Ngưỡng phải trùng một biên bucket.
 - **"Đang có Elastic APM, sao còn thêm OpenTelemetry?"** OpenTelemetry là chuẩn mở: instrument một lần, đổi backend bằng cấu hình exporter. Elastic APM nhận được OTLP nên không phải bỏ hệ thống cũ.
 - **"Head-based và tail-based sampling khác nhau thế nào?"** Head-based quyết định ngay ở span đầu theo tỉ lệ, rẻ nhưng có thể bỏ sót trace lỗi. Tail-based quyết định ở Collector sau khi trace xong, giữ được trace lỗi hoặc chậm, đổi lại tốn bộ nhớ đệm và cần mọi span của một trace về cùng Collector.
-- **"Làm sao giảm số lần bị gọi dậy ban đêm?"** Bỏ alert theo nguyên nhân, chỉ page theo burn rate của SLO; gộp alert cùng sự cố; cái không cần xử lý ngay thì thành ticket; mỗi page có runbook; alert không ai hành động thì xóa sau buổi review. Tôi chưa làm việc này, và con số trên CV chưa được đo.
+- **"Làm sao giảm số lần bị gọi dậy ban đêm?"** Bỏ alert theo nguyên nhân, chỉ page theo burn rate của SLO; gộp alert cùng sự cố; cái không cần xử lý ngay thì thành ticket; mỗi page có runbook; alert không ai hành động thì xóa sau buổi review. Phần page theo burn rate tôi chưa triển khai; hiện alert theo ngưỡng trên APM. Khi làm, tôi đo bằng số page mỗi tháng, so cùng mùa thi.
 - **"Postmortem gần nhất anh viết là gì?"** Tôi chưa viết postmortem chính thức ở VTC. Sự cố tôi sẽ viết là API bắt đầu thi thử chậm vì vòng `SCAN`: phát hiện qua đợt rà soát APM, nguyên nhân gốc, cách sửa, và action item như đo p95 trước sau, rà các chỗ khác dùng `SCAN` hoặc `KEYS` trên đường request.
 
 #### Bẫy cần tránh

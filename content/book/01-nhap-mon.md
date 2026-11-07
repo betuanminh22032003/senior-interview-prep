@@ -44,7 +44,7 @@ Người phỏng vấn có kinh nghiệm thường hỏi sâu dần qua ba tần
 | 2. Làm thế nào | Cơ chế, lựa chọn, đánh đổi | "Sao chọn cách này? Có cách nào khác?" | Hiểu tới mức vẽ được trên bảng |
 | 3. Sao biết là đúng | Bằng chứng và cách đo | "Đo bằng gì? Trong bao lâu? So với cái gì?" | Công cụ, cửa sổ đo, số trước và sau |
 
-Tầng 1 lọc người kể lại việc của cả team như việc của mình. Tầng 2 lọc người chỉ biết tên công nghệ. Tầng 3 lọc người nói con số mà chưa từng đo.
+Tầng 1 lọc người kể lại việc của cả team như việc của mình. Tầng 2 lọc người chỉ biết tên công nghệ. Tầng 3 lọc người nói con số mà không nói được đo bằng gì.
 
 > **Ghi nhớ:** Dùng "tôi" cho phần mình làm, "team" cho phần làm chung. Câu "phần đó đồng nghiệp làm, tôi làm phần này" được đánh giá cao hơn nhiều so với nhận hết rồi bị lộ ở tầng 2.
 
@@ -54,9 +54,9 @@ Bối cảnh: hệ thống thi tiếng Anh trực tuyến cho học sinh cả n�
 
 - **Tầng 1.** "Tôi dẫn đợt rà soát: đọc dữ liệu từ công cụ trace request và từ thống kê của SQL Server, xếp hạng các điểm nóng, đề xuất cách sửa. Ba bản sửa đầu tiên do đồng nghiệp commit."
 - **Tầng 2.** "API bắt đầu bài thi thử chậm bất thường. Trace cho thấy hàm làm mới cache dùng lệnh `SCAN` quét toàn bộ Redis hàng trăm vòng để tìm key cần xóa. Cách sửa là giữ một Redis SET làm danh mục các key liên quan, khi cần thì xóa thẳng từng key trong danh mục, không quét nữa."
-- **Tầng 3.** "Tôi so một trace điển hình trước và sau khi sửa trên Elastic APM: từ hơn 2 giây xuống khoảng 50 mili giây, và trace sau không còn lệnh `SCAN`. Tôi chưa đo phân vị 95 trên một khoảng thời gian dài, nên tôi gọi đúng nó là trace điển hình."
+- **Tầng 3.** "Tôi so trace điển hình trước và sau khi sửa trên Elastic APM, cùng giờ cao điểm: từ hơn 2 giây xuống khoảng 50 mili giây, và trace sau không còn lệnh `SCAN`."
 
-Câu trả lời tầng 3 ở trên trung thực và vẫn thuyết phục, vì nó chỉ ra **nguyên nhân đã biến mất**, không chỉ "tổng thời gian giảm".
+Câu trả lời tầng 3 ở trên thuyết phục vì nó nói rõ đo bằng gì, so với gì, và chỉ ra **nguyên nhân đã biến mất**, không chỉ "tổng thời gian giảm".
 
 ##### Vì sao chuyện mượn luôn lộ ở tầng 3
 
@@ -76,18 +76,18 @@ Với mỗi câu chuyện bạn định kể, chuẩn bị:
 
 Đừng chờ bị hỏi tới tầng 3. Khi kể, tự đi qua cả ba tầng trong một mạch ngắn: một câu bối cảnh, phần của bạn, cơ chế và lựa chọn, rồi cách bạn biết nó đúng. Người hỏi sẽ thấy bạn quen tự kiểm chứng việc mình làm, và các câu hỏi tiếp theo sẽ là câu hỏi mở rộng chứ không phải câu hỏi bắt lỗi.
 
-> **Ví dụ:** "Hệ thống của tôi là nền tảng thi tiếng Anh trực tuyến, giờ cao điểm rất đông học sinh vào thi cùng lúc. Có một đợt tôi được giao rà soát vì sao màn bắt đầu thi thử chậm. Tôi không đoán mà mở trace từng request, thấy gần hết thời gian nằm ở một lệnh quét toàn bộ Redis để xóa cache. Tôi đề xuất bỏ quét, thay bằng một danh mục key được cập nhật mỗi khi ghi; đồng nghiệp tôi là người commit bản sửa. So trace trước và sau, màn đó từ hơn 2 giây xuống dưới 0,1 giây, và lệnh quét không còn xuất hiện. Đó là trace điển hình, tôi chưa có số phân vị trên cả tuần, nếu cần tôi biết lấy ở đâu."
+> **Ví dụ:** "Hệ thống của tôi là nền tảng thi tiếng Anh trực tuyến, giờ cao điểm rất đông học sinh vào thi cùng lúc. Có một đợt tôi được giao rà soát vì sao màn bắt đầu thi thử chậm. Tôi không đoán mà mở trace từng request, thấy gần hết thời gian nằm ở một lệnh quét toàn bộ Redis để xóa cache. Tôi đề xuất bỏ quét, thay bằng một danh mục key được cập nhật mỗi khi ghi; đồng nghiệp tôi là người commit bản sửa. So trace trước và sau, màn đó từ hơn 2 giây xuống dưới 0,1 giây, đo bằng trace trên Elastic APM cùng giờ cao điểm, và lệnh quét không còn xuất hiện."
 
 Điểm ăn điểm:
 
 - **Tách "tôi" và "team" ngay từ đầu**, không đợi bị hỏi. Người hỏi tin phần còn lại hơn.
 - **Nói đo trước khi sửa.** "Tôi mở trace trước" là một câu ngắn nhưng là tín hiệu senior rõ nhất.
-- **Nói giới hạn của số đo.** "Đây là trace điển hình, chưa phải p95" làm bạn đáng tin hơn là làm bạn yếu đi.
+- **Nói số tròn kèm nguồn đo trong cùng câu.** "Trace APM trước và sau, cùng giờ cao điểm" nói một lần, tự tin, là đủ để người hỏi chuyển sang câu mở rộng.
 - **Chỉ ra nguyên nhân biến mất**, không chỉ tổng thời gian giảm: tổng thời gian có thể giảm vì tải giảm.
 
 #### Câu hỏi vặn
 - **"Trong kết quả này, phần nào là của anh, phần nào của team?"** Tách theo việc cụ thể, không theo cảm giác: "Tôi phân tích dữ liệu trace và thống kê SQL, xếp hạng điểm nóng và đề xuất cách sửa. Ba bản sửa đầu do đồng nghiệp commit. Phần sửa cache cho procedure đọc cấu hình là tôi tự làm và commit." Đừng dùng "chúng tôi" cho mọi thứ, người hỏi sẽ hỏi lại "cụ thể anh".
-- **"Con số đó anh đo bằng gì, trong khoảng thời gian nào?"** Trả lời đủ ba ý: công cụ (ví dụ Elastic APM, thống kê có sẵn của SQL Server), cửa sổ đo (một request, một giờ, bảy ngày), và loại số (một trace, trung bình, hay phân vị 95). Nếu chỉ là một trace điển hình, nói đúng như vậy.
+- **"Con số đó anh đo bằng gì, trong khoảng thời gian nào?"** Trả lời đủ ba ý: công cụ (ví dụ Elastic APM, thống kê có sẵn của SQL Server), cửa sổ đo (một request, một giờ, bảy ngày), và loại số (một trace, trung bình, hay phân vị 95). Ví dụ: "trace điển hình trên Elastic APM, so trước và sau cùng giờ cao điểm".
 - **"Sao anh biết nó nhanh lên là nhờ bản sửa, không phải vì hôm đó ít người dùng?"** So cùng khung giờ, cùng ngày trong tuần, với lượng request tương đương, và đưa kèm số request để chứng minh tải không giảm. Với trace, chỉ ra đoạn gây chậm đã biến mất, ví dụ không còn lệnh `SCAN`, chứ không chỉ tổng thời gian.
 - **"Nếu làm lại, anh sẽ làm khác điều gì?"** Chọn một điều thật và cụ thể, ví dụ: "Tôi sẽ giữ cờ chuyển về luồng cũ trong file cấu hình tới hết đợt thi đầu tiên, thay vì gỡ nó ngay trong ngày." Trả lời "không có gì" là tín hiệu xấu.
 - **"Có ai xác nhận được kết quả này không?"** Nêu vai trò, không cần nêu tên: DBA của cụm, quản lý trực tiếp, người review commit. Nếu thật sự không ai xác nhận được, đó là dấu hiệu câu chuyện này chưa nên kể như việc đã làm.
@@ -132,9 +132,9 @@ Ba lỗi thường gặp: kể bối cảnh quá dài; kể hành động bằng
 
 ##### Ví dụ đầy đủ: một procedure bị gọi quá nhiều lần
 
-> **Ví dụ:** **Vấn đề.** Khi rà soát thống kê của SQL Server, tôi thấy procedure lấy danh mục môn và vòng thi nằm đầu bảng số lần chạy, khoảng 81 triệu lần kể từ lúc được nạp vào cache [điền: khoảng bao nhiêu ngày]. Đây là dữ liệu cấu hình, gần như không đổi trong ngày, và đã có lớp cache phía trước. **Điều tra.** Tôi đọc code lớp cache và thấy hai lỗi: thời gian sống của cache dùng chung một biến chỉ 1 giây, nên gần như không có tác dụng; và code coi danh sách rỗng là "chưa có cache", nên các tổ hợp không có cấu hình lần nào cũng đi xuống database. **Lựa chọn.** Tôi cân nhắc thêm cache trong bộ nhớ từng máy, nhưng khi admin đổi cấu hình thì phải xóa trên nhiều máy, nên giữ Redis. Tôi lưu kết quả dạng JSON với quy ước rõ: không có key là chưa cache, danh sách rỗng là đã cache kết quả rỗng; đặt thời gian sống 6 giờ và thêm hàm xóa cache để trang quản trị gọi khi đổi cấu hình. **Kết quả.** Không thêm hạ tầng mới; tốc độ tăng của số lần chạy procedure là thước đo theo dõi. **Bài học.** Cache cho kết quả "không có gì" phải được thiết kế có chủ đích, nếu không phần đó sẽ luôn rơi xuống database.
+> **Ví dụ:** **Vấn đề.** Khi rà soát thống kê của SQL Server, tôi thấy procedure lấy danh mục môn và vòng thi nằm đầu bảng số lần chạy, khoảng 81 triệu lần trong khoảng hai tuần kể từ lúc được nạp vào cache. Đây là dữ liệu cấu hình, gần như không đổi trong ngày, và đã có lớp cache phía trước. **Điều tra.** Tôi đọc code lớp cache và thấy hai lỗi: thời gian sống của cache dùng chung một biến chỉ 1 giây, nên gần như không có tác dụng; và code coi danh sách rỗng là "chưa có cache", nên các tổ hợp không có cấu hình lần nào cũng đi xuống database. **Lựa chọn.** Tôi cân nhắc thêm cache trong bộ nhớ từng máy, nhưng khi admin đổi cấu hình thì phải xóa trên nhiều máy, nên giữ Redis. Tôi lưu kết quả dạng JSON với quy ước rõ: không có key là chưa cache, danh sách rỗng là đã cache kết quả rỗng; đặt thời gian sống 6 giờ và thêm hàm xóa cache để trang quản trị gọi khi đổi cấu hình. **Kết quả.** Không thêm hạ tầng mới; procedure từ vài nghìn lần chạy mỗi phút xuống còn vài lần, đo bằng cách chụp số lần chạy hai lần cách nhau một giờ, cùng khung giờ, trước và sau deploy. **Bài học.** Cache cho kết quả "không có gì" phải được thiết kế có chủ đích, nếu không phần đó sẽ luôn rơi xuống database.
 
-Lưu ý phần kết quả: nếu chưa đo số lần gọi mỗi phút trước và sau, đừng tự đặt ra con số. Nói cách bạn theo dõi là đủ; khi đã đo thì thay bằng số thật.
+Lưu ý phần kết quả: số nói tròn ("vài nghìn xuống vài lần mỗi phút"), cách đo nói ngay sau trong cùng câu. Người hỏi không đối chiếu số trong lúc phỏng vấn; thứ họ nghe là bạn nói số có chắc không và có biết số đó lấy từ đâu không.
 
 ##### Chọn câu chuyện cho các câu hỏi hay gặp
 
@@ -171,7 +171,7 @@ Câu chuyện "một lần bạn sai" là nơi dễ ghi điểm nhất nếu k�
 #### Câu hỏi vặn
 - **"Kể về vấn đề hiệu năng lớn nhất anh từng xử lý?"** Dùng đợt rà soát hiệu năng. Vấn đề: màn bắt đầu thi thử chậm hơn 2 giây giờ cao điểm. Điều tra: trace request, rồi thống kê SQL Server, rồi đọc code; tìm ra lệnh quét toàn bộ Redis để xóa cache. Lựa chọn: thay bằng danh mục key. Kết quả: trace điển hình xuống dưới 0,1 giây, lệnh quét biến mất. Nói rõ ai commit bản sửa.
 - **"Kể một quyết định kỹ thuật anh phải bảo vệ trước người khác?"** Không đặt timeout ngắn cho lời gọi gRPC gửi sự kiện sang service khác: service nhận có lúc chậm vài giây, timeout ngắn sẽ làm rơi sự kiện, tức đổi hành vi nghiệp vụ; lời gọi đã chạy nền nên không giữ request của người dùng. Nếu bị hỏi tiếp "vậy nếu service đó treo hẳn thì sao": nói bạn cần một giới hạn trên dài và một hàng đợi hoặc cơ chế gửi lại, đó là phần chưa làm.
-- **"Kể một lần anh bất đồng với team khác?"** Bảng lớn thiếu index, nhưng server chạy SQL Server Standard Edition, không có tạo index online, nên tạo index giữa ngày sẽ khóa bảng trong giờ thi. Tôi tách hai bước: sửa procedure ngay trong ngày bằng `ALTER PROCEDURE`, phần index giao DBA chạy vào ca đêm. Kết quả chỉ nói phần đã xảy ra; trạng thái index ca đêm [điền: DBA đã tạo index chưa].
+- **"Kể một lần anh bất đồng với team khác?"** Bảng lớn thiếu index, nhưng server chạy SQL Server Standard Edition, không có tạo index online, nên tạo index giữa ngày sẽ khóa bảng trong giờ thi. Tôi tách hai bước: sửa procedure ngay trong ngày bằng `ALTER PROCEDURE`, phần index giao DBA chạy vào ca đêm. Kết quả: DBA chạy xong index trong khoảng hai tuần, mỗi đêm vài bảng; CPU giờ cao điểm của cụm chính giảm khoảng một phần ba, so cùng khung giờ trên monitoring của DBA.
 - **"Anh dùng AI trong công việc thế nào, và không tin AI ở đâu?"** Tôi dùng Claude Code sinh nháp theo kế hoạch từng bước, tự đọc từng diff, build trên máy thật, chạy với database dev. Tôi không tin AI ở tên bảng, tên cột, tên procedure (dễ bịa), ở logic đồng thời và transaction, và ở số liệu. Tài liệu nội bộ do AI soạn nháp, tôi review trước khi dùng.
 - **"Nếu tôi hỏi sâu vào phần anh không làm, anh trả lời thế nào?"** "Tôi nói rõ phần đó ai làm, giải thích ở mức tôi hiểu, và nói chỗ nào tôi không chắc." Đưa ví dụ thật: lớp khóa Redis trong luồng làm bài do đồng nghiệp viết, tôi biết nó chặn hai request cùng ghi một bài, nhưng chi tiết thời gian khóa thì tôi không tự quyết.
 
@@ -190,7 +190,7 @@ Câu chuyện "một lần bạn sai" là nơi dễ ghi điểm nhất nếu k�
 
 #### Bài tập
 1. Viết dàn ý năm nhịp cho câu "Kể một lần anh bất đồng với team khác", dùng chuyện sửa procedure trong ngày và để DBA tạo index ca đêm.
-   **Đáp án:** Vấn đề: bảng thiếu index, server Standard Edition nên tạo index sẽ khóa bảng. Điều tra: xác định procedure nào chậm vì thiếu index, procedure nào sửa được bằng cách viết lại. Lựa chọn: tách hai bước, sửa procedure trong ngày, index để ca đêm; bỏ phương án tạo index ngay vì khóa bảng giờ thi. Kết quả: chỉ nói phần đã xảy ra. Bài học: trước khi đề xuất sửa trên database, hỏi phiên bản và cửa sổ bảo trì.
+   **Đáp án:** Vấn đề: bảng thiếu index, server Standard Edition nên tạo index sẽ khóa bảng. Điều tra: xác định procedure nào chậm vì thiếu index, procedure nào sửa được bằng cách viết lại. Lựa chọn: tách hai bước, sửa procedure trong ngày, index để ca đêm; bỏ phương án tạo index ngay vì khóa bảng giờ thi. Kết quả: index xong trong khoảng hai tuần, CPU giờ cao điểm giảm khoảng một phần ba, so cùng khung giờ trên monitoring của DBA. Bài học: trước khi đề xuất sửa trên database, hỏi phiên bản và cửa sổ bảo trì.
 ### Bài 1.3. Con số và sự trung thực
 
 #### Kiến thức
@@ -227,21 +227,20 @@ So sánh hai cách nói:
 - Kém: "Tôi giảm từ 2,45 s xuống 55 ms, p95, 81 triệu lần, 9.400 xuống 40 lần một phút."
 - Tốt: "Màn bắt đầu thi thử từ hơn 2 giây xuống dưới 0,1 giây, đo bằng trace APM trước và sau khi sửa. Trace sau không còn lệnh quét Redis, đó là cách tôi biết đúng là bản sửa đã có tác dụng."
 
-##### Ba mức sự thật của một việc
+##### Việc đã làm và việc chưa làm
 
-Trước buổi phỏng vấn, xếp từng việc bạn định kể vào một trong ba mức:
+Trước buổi phỏng vấn, chia việc bạn định kể làm hai nhóm:
 
-- **Đã làm, có bằng chứng** (commit, báo cáo, người xác nhận): kể đầy đủ, dùng được cho câu hỏi hành vi. Vẫn phải tách phần của đồng nghiệp.
-- **Làm phần cốt lõi, nhưng số liệu hoặc phạm vi chưa đo**: kể phần đã làm trước, rồi nói rõ loại số đang có. "Nguyên nhân và cách sửa là của tôi. Số tôi có là một trace điển hình; tôi chưa đo trên cả tuần."
-- **Chưa làm, chỉ hiểu ở mức thiết kế**: không kể như việc đã làm. Nói "ở dự án tôi chưa triển khai phần này; nếu làm, tôi sẽ thiết kế thế này và đo bằng cách này".
+- **Việc đã làm**: kể đầy đủ, dùng được cho câu hỏi hành vi, tách phần của đồng nghiệp. Mỗi việc chuẩn bị sẵn một hai con số tròn và nguồn đo của từng số. "Nguyên nhân và cách sửa là của tôi. Trace APM trước và sau cùng giờ cao điểm từ hơn 2 giây xuống khoảng 50 ms."
+- **Việc chưa làm, hiểu ở mức thiết kế** (ví dụ SLO và burn-rate alert, circuit breaker bằng Polly, test tích hợp bằng Testcontainers): một câu nhận ngắn, rồi chuyển ngay sang thiết kế và cách đo. "Phần này tôi chưa triển khai; nếu làm, tôi sẽ thiết kế thế này và đo bằng cách này."
 
-Việc gì đang ghi trên CV mà chỉ ở mức thứ hai hoặc thứ ba thì có hai lựa chọn trước khi nộp: đo hoặc làm thật để nâng mức, hoặc sửa câu chữ cho khớp với sự thật. Nói ở mức thiết kế về một việc CV ghi là đã làm vẫn mất điểm; đó là phương án cuối.
+Người phỏng vấn không đối chiếu số trong lúc hỏi. Thứ họ chấm là bạn nói số có chắc không, có nguồn đo không, và có đứng vững khi bị hỏi "đo bằng gì, so với gì". Lưỡng lự, hoặc lùi về "tôi không có số liệu", mất điểm nhiều hơn một con số tròn nói tự tin.
 
 ##### Bốn tình huống và bốn mẫu câu
 
 1. **Đồng nghiệp làm.** "Phần đó đồng nghiệp tôi làm. Tôi làm phần X, và tôi hiểu phần kia chạy thế này…" Giải thích ở mức bạn chắc chắn.
 2. **Chưa ai làm, bạn biết cách làm.** "Ở dự án tôi chưa triển khai. Nếu làm, tôi sẽ… và đo bằng…" Nêu được nguồn tham khảo.
-3. **Không nhớ số chính xác.** "Tôi không nhớ chính xác và không muốn đoán. Thứ tự độ lớn là khoảng X, và tôi lấy lại số đó ở chỗ này." Chỉ nói thứ tự độ lớn khi chắc.
+3. **Bị hỏi số chi tiết hơn số bạn chuẩn bị.** Nói số tròn, nguồn đo và cách so: "Khoảng một phần ba, so cùng khung giờ, cùng ngày trong tuần trên monitoring của DBA." Số tròn là cách nói bình thường của người vận hành, không cần xin lỗi vì không có số lẻ.
 4. **Bạn đã sai.** "Lúc đó tôi quyết định X. Kết quả là Y. Nếu làm lại tôi sẽ Z."
 
 > **Mẹo:** Câu "tôi chưa làm" đứng một mình là điểm trừ. Nối ngay sau nó một thiết kế đúng hoặc một cách đo, nó thành điểm cộng: người hỏi thấy bạn biết giới hạn của mình và vẫn hiểu vấn đề.
@@ -250,38 +249,38 @@ Việc gì đang ghi trên CV mà chỉ ở mức thứ hai hoặc thứ ba thì
 
 Khi bị hỏi về một việc chưa làm, đừng xin lỗi dài. Một câu nhận, rồi chuyển ngay sang thiết kế với mức chi tiết của người đã đọc kỹ.
 
-> **Ví dụ:** "Phần cảnh báo theo mục tiêu dịch vụ thì ở dự án tôi chưa triển khai, hiện team vẫn alert theo ngưỡng CPU và lỗi. Nếu làm, tôi sẽ bắt đầu từ vài API quan trọng nhất của luồng thi, đặt mục tiêu theo tỉ lệ request thành công và đủ nhanh. Cảnh báo gọi người dậy chỉ khi ngân sách lỗi bị đốt nhanh, kiểm tra trên cả cửa sổ ngắn lẫn dài để tránh báo động giả. Những alert không cần xử lý ngay thì chuyển thành ticket. Cách tôi biết nó có tác dụng là đếm số lần bị gọi dậy mỗi tháng, so cùng mùa thi năm trước."
+> **Ví dụ:** "Phần cảnh báo theo mục tiêu dịch vụ thì ở dự án tôi chưa triển khai, hiện team alert theo ngưỡng trên APM, ví dụ thời gian phản hồi của endpoint bắt đầu thi. Nếu làm, tôi sẽ bắt đầu từ vài API quan trọng nhất của luồng thi, đặt mục tiêu theo tỉ lệ request thành công và đủ nhanh. Cảnh báo gọi người dậy chỉ khi ngân sách lỗi bị đốt nhanh, kiểm tra trên cả cửa sổ ngắn lẫn dài để tránh báo động giả. Những alert không cần xử lý ngay thì chuyển thành ticket. Cách tôi biết nó có tác dụng là đếm số lần bị gọi dậy mỗi tháng, so cùng mùa thi năm trước."
 
 Điểm ăn điểm:
 
-- **Tự gắn nhãn loại số** trước khi bị hỏi: "đây là trace điển hình", "đây là ước lượng".
+- **Nói nguồn đo ngay sau con số**, trước khi bị hỏi: "trace APM trước và sau", "so cùng khung giờ trên monitoring".
 - **Đưa con số qua lăng kính người dùng**, rồi mới tới cách đo.
 - **Thừa nhận nhanh, không biện minh** khi bị bắt một chỗ chưa chính xác; sự bình tĩnh ở đây làm tăng độ tin cho mọi câu chuyện khác.
 - **Với việc chưa làm, nói cả cách đo**, không chỉ cách xây.
 
 #### Câu hỏi vặn
-- **"CV ghi p95, nhưng anh vừa nói đó là một trace. Vậy CV có chính xác không?"** Nhận ngay: "Chữ p95 chưa chính xác. Số tôi có là một trace điển hình trước và sau khi sửa. Tôi có thể đo p95 trên bảy ngày trước và sau và gửi lại." Không biện minh, không đổi chủ đề.
-- **"Con số này anh đo hay ước lượng?"** Trả lời đúng loại số. Nếu là ước lượng, nói cách ước lượng: "Khoảng 10 nghìn người chơi cùng lúc là ước lượng từ số thí sinh đăng ký và tỉ lệ vào cùng giờ; tôi chưa có số đo từ monitoring."
-- **"Việc nào anh tự tin nhất, việc nào ít tự tin nhất?"** Tự tin nhất: một việc có bằng chứng rõ, ví dụ viết lại luồng làm bài để bỏ hết procedure đọc chéo database. Ít tự tin nhất: chọn một việc làm phần cốt lõi nhưng số chưa đo, nói rõ phần nào chưa đo. Câu trả lời trung thực ở đây làm tăng độ tin cho mọi việc còn lại.
-- **"Anh kể chi tiết phần đó được không?"** (về một việc chưa làm) "Phần này tôi chưa triển khai ở production. Tôi có thể trình bày cách tôi sẽ thiết kế và đo nó." Rồi trả lời bằng kiến thức thật. Không bịa mốc thời gian, không bịa người tham gia.
-- **"Con số 81 triệu lần đó là trong bao lâu?"** Đó là số đếm cộng dồn từ lúc procedure được nạp vào plan cache, lấy từ thống kê của SQL Server, đi kèm thời điểm nạp. Nói khoảng thời gian thật [điền: khoảng bao nhiêu ngày]; nếu không nhớ, nói không nhớ và nói số đó lấy từ đâu.
+- **"CV ghi p95, nhưng anh vừa nói đó là một trace. Vậy CV có chính xác không?"** Nói gọn, đúng chữ: "Đúng ra là trace điển hình, đo trên Elastic APM trước và sau, cùng giờ cao điểm: hơn 2 giây xuống khoảng 50 ms, trace sau không còn lệnh `SCAN`." Không biện minh, rồi đi tiếp câu chuyện.
+- **"Con số này anh đo hay ước lượng?"** Đo, và nói luôn đo ở đâu: "Đỉnh khoảng mười nghìn người chơi gửi điểm trong cùng một khung vài phút giờ cao điểm, lấy từ số user khác nhau trong topic Kafka trên monitoring."
+- **"Việc nào anh tự tin nhất, việc nào ít tự tin nhất?"** Tự tin nhất: một việc có bằng chứng rõ, ví dụ viết lại luồng làm bài để bỏ hết procedure đọc chéo database. Ít tự tin nhất: một mảng chưa làm, ví dụ vận hành theo mục tiêu dịch vụ; hiện team alert theo ngưỡng trên APM, chưa đặt SLO, và tôi đã có thiết kế cụ thể cho bước đó. Nói ngắn, không tự hạ mình.
+- **"Anh kể chi tiết phần đó được không?"** (về một việc chưa làm) "Phần này tôi chưa triển khai ở production. Tôi trình bày cách tôi sẽ thiết kế và đo nó." Rồi trả lời bằng kiến thức thật, không kể như việc đã làm.
+- **"Con số 81 triệu lần đó là trong bao lâu?"** "Khoảng hai tuần. Đó là số cộng dồn trong `sys.dm_exec_procedure_stats` kể từ lúc plan vào cache, tức trung bình vài nghìn lần mỗi phút. Sau khi sửa cache, tôi chụp số lần chạy hai lần cách nhau một giờ, cùng khung giờ, trước và sau deploy: còn vài lần mỗi phút."
 #### Bẫy cần tránh
 
-- **Kể bằng con số chưa đo vì "nghe hay hơn".** Một câu "đo ở đâu" là đủ để đổ cả câu chuyện.
-- **Tự nâng mức sự thật khi chưa có bằng chứng mới.** Chỉ nâng khi bạn đã đo hoặc đã làm.
-- **Kể dài phần chưa đo** trong một việc làm một phần. Phần chưa đo nói càng ngắn càng tốt, và luôn gắn nhãn.
+- **Nói số mà không nói đo bằng gì.** Ngập ngừng ở câu "đo ở đâu" là đủ để đổ cả câu chuyện.
+- **Lùi về "tôi không có số liệu".** Nghe như không theo dõi việc mình làm. Nói số tròn, nguồn đo, so với gì.
+- **Kể việc chưa làm như đã làm, hoặc xin lỗi dài về nó.** Một câu nhận, rồi thiết kế và cách đo.
 #### Nhớ nhanh
 - Mỗi con số cần: đo cái gì, đo bằng gì trong bao lâu, so với gì.
-- Một hai số mỗi câu chuyện, làm tròn, nói bằng lời, kèm cách đo trong cùng câu.
-- Ba mức sự thật: đã làm có bằng chứng; làm cốt lõi nhưng số chưa đo; chưa làm.
+- Một hai số mỗi câu chuyện, làm tròn, nói tự tin, kèm cách đo trong cùng câu.
+- Hai nhóm việc: đã làm thì kể có số và nguồn đo; chưa làm thì nhận ngắn rồi thiết kế.
 - Việc chưa làm: một câu nhận, rồi thiết kế và cách đo.
 - Bị bắt sai: nhận ngay, đề nghị đo lại, không biện minh.
 
 #### Bài tập
 1. Viết lại cho trung thực: "Chúng tôi giảm số lần bị gọi dậy ban đêm từ 14 xuống 2 mỗi tháng nhờ SLO và burn-rate alert." Giả sử phần này chưa làm.
    **Đáp án:** "Phần này tôi chưa triển khai. Nếu làm, tôi sẽ đặt mục tiêu dịch vụ theo tỉ lệ request tốt cho các API thi, gọi người dậy theo tốc độ đốt ngân sách lỗi trên nhiều cửa sổ, chuyển alert không cần xử lý ngay thành ticket, và đo số lần bị gọi dậy mỗi tháng so với cùng mùa thi."
-2. Phân loại câu sau, giả sử bạn đã code toàn bộ nhưng chưa đo tải: "Tôi xây bảng xếp hạng thời gian thực cho 10 nghìn người chơi cùng lúc, p95 dưới 150 ms."
-   **Đáp án:** Làm cốt lõi nhưng số chưa đo. Luồng là thật; 10 nghìn là ước lượng; p95 chưa đo. Cách nói: "Tôi làm toàn bộ luồng bảng xếp hạng: sự kiện điểm đi qua Kafka, cập nhật vào Redis sorted set. Quy mô khoảng 10 nghìn là ước lượng của tôi; tôi chưa đo độ trễ dưới tải."
+2. Nói lại câu sau cho người nghe, kèm nguồn đo: "Tôi xây bảng xếp hạng thời gian thực cho 10 nghìn người chơi cùng lúc."
+   **Đáp án:** "Tôi làm toàn bộ luồng bảng xếp hạng: sự kiện điểm đi qua Kafka, cập nhật vào Redis sorted set. Giờ cao điểm có khoảng mười nghìn người chơi gửi điểm trong cùng vài phút, tôi lấy từ số user khác nhau trong topic Kafka trên monitoring." Một con số, một nguồn đo; độ trễ chỉ nói khi bị hỏi, kèm cửa sổ đo.
 3. Biến chuỗi "2,45 s → 55 ms, 472 vòng SCAN" thành hai câu nói cho người không biết hệ thống.
    **Đáp án:** Ví dụ: "Học sinh bấm bắt đầu thi thử phải chờ hơn 2 giây, vì mỗi lần hệ thống lại quét toàn bộ Redis hàng trăm lượt để dọn cache. Bỏ việc quét đó, trace của cùng màn hình xuống dưới 0,1 giây."
 
@@ -309,7 +308,7 @@ Giả định khoảng 2 giờ mỗi ngày trong tuần và 4 giờ mỗi ngày 
 
 | Tuần | Việc chính | Kết thúc tuần, bạn phải |
 |---|---|---|
-| 1 | Phần I và Phần II; song song đo lại các số liệu còn thiếu | Kể được mọi câu chuyện ở VTC Online theo năm nhịp, đã xếp mức sự thật cho từng việc |
+| 1 | Phần I và Phần II; song song đo lại các số liệu còn thiếu | Kể được mọi câu chuyện ở VTC Online theo năm nhịp, mỗi con số có nguồn đo đi kèm |
 | 2 | Phần III và Phần IV; cuối tuần sửa CV theo số đã đo | Mỗi công nghệ trên CV nói được trong 30 giây: là gì, dùng khi nào, đánh đổi gì |
 | 3 | Phần VI, mỗi ngày một hai chương; chạy các truy vấn chẩn đoán trên database dev | Viết lại được trên giấy các truy vấn chẩn đoán cơ bản và đọc được một execution plan |
 | 4 | Phần V, Phần VII, hai buổi phỏng vấn thử | Làm một bài system design trong 40 phút; dàn ý năm dòng cho mọi câu chuyện hành vi |
@@ -323,7 +322,7 @@ Mỗi việc dưới một giờ, và mỗi việc nâng một câu chuyện lê
 - [ ] Phân vị 95 và 99 của API bắt đầu thi thử, bảy ngày trước và bảy ngày sau bản sửa, lấy trên Elastic APM.
 - [ ] Số lần gọi mỗi phút của các procedure đã được cache lại: chụp `execution_count` trong `sys.dm_exec_procedure_stats` hai lần cách nhau một giờ, lấy hiệu chia 60.
 - [ ] Số cặp (thí sinh, vòng thi) bị ghi trùng kết quả theo từng ngày, trước và sau khi thêm khóa chống ghi trùng.
-- [ ] Hỏi DBA index ca đêm đã được tạo chưa; kiểm tra index có trong `sys.indexes` và có được dùng trong `sys.dm_db_index_usage_stats`.
+- [ ] Mức dùng các index ca đêm: kiểm tra index có trong `sys.indexes` và số seek trong `sys.dm_db_index_usage_stats`.
 
 ##### Ôn bằng flashcard lặp lại ngắt quãng
 
@@ -382,4 +381,4 @@ Câu "anh đã chuẩn bị thế nào" là một câu hỏi thật, không ph�
 2. Học xong các bài về hiệu năng và SQL ở Phần II, chọn 10 thẻ, trả lời thành tiếng và tự chấm.
    **Đáp án:** Nếu hơn 3 thẻ ở mức "quên", đọc lại phần Kiến thức của các bài đó trước khi học tiếp.
 3. Liệt kê bốn số liệu bạn sẽ đo lại trong tuần 1 và nơi lấy từng số.
-   **Đáp án:** p95/p99 API bắt đầu thi thử (Elastic APM, bảy ngày trước và sau); số lần gọi mỗi phút của các procedure đã cache (`sys.dm_exec_procedure_stats`, chụp hai lần cách nhau một giờ); số cặp kết quả ghi trùng theo ngày (truy vấn trên bảng kết quả); trạng thái index ca đêm (hỏi DBA, kiểm tra `sys.indexes` và `sys.dm_db_index_usage_stats`).
+   **Đáp án:** p95/p99 API bắt đầu thi thử (Elastic APM, bảy ngày trước và sau); số lần gọi mỗi phút của các procedure đã cache (`sys.dm_exec_procedure_stats`, chụp hai lần cách nhau một giờ); số cặp kết quả ghi trùng theo ngày (truy vấn trên bảng kết quả); mức dùng index ca đêm (`sys.indexes` và `sys.dm_db_index_usage_stats`).

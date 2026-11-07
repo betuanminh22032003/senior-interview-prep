@@ -812,7 +812,7 @@ Khung kể: bối cảnh (hệ thống, tải) → vấn đề có số → các
 #### Cách show off
 Kế hoạch hai tầng là việc thật của bạn: sửa proc trong ngày vì `ALTER PROCEDURE` gần như không gây gián đoạn, còn index thì gom sang khung đêm làm cùng DBA, vì server chạy bản Standard nên tạo index sẽ khoá bảng. Câu chuyện có số tốt nhất là API bắt đầu thi: trace APM trước và sau cho thấy từ hơn 2 giây xuống dưới 0,1 giây. Vai trò của bạn là tìm nguyên nhân và đề xuất, đồng nghiệp commit bản sửa; con số là trace điển hình, không phải p95.
 
-> **Ví dụ:** "Đợt rà soát cho ra vài chục đề xuất, nên việc đầu tiên tôi làm là sắp thứ tự. Những thứ có thể làm sập hệ thống, như log gần đầy hay tempdb nằm trên ổ hệ điều hành sắp hết chỗ, xử lý ngay. Sau đó tôi chia hai tầng: sửa stored procedure thì deploy trong ngày vì gần như không gây gián đoạn và lùi được ngay; còn index thì gom sang khung đêm cùng DBA, vì server chạy bản Standard, tạo index sẽ khoá bảng. Mỗi đề xuất có số đo trước, rủi ro, đường lui và tiêu chí nghiệm thu. Ví dụ rõ nhất là API bắt đầu thi: tôi lần theo trace và thấy hàm làm mới cache quét toàn bộ keyspace Redis hàng trăm vòng trong một request; đồng nghiệp sửa theo hướng tôi đề xuất, và trace điển hình giảm từ hơn 2 giây xuống dưới 0,1 giây. Đó là trace trước và sau, tôi chưa đo p95 cho API này."
+> **Ví dụ:** "Đợt rà soát cho ra vài chục đề xuất, nên việc đầu tiên tôi làm là sắp thứ tự. Những thứ có thể làm sập hệ thống, như log gần đầy hay tempdb nằm trên ổ hệ điều hành sắp hết chỗ, xử lý ngay. Sau đó tôi chia hai tầng: sửa stored procedure thì deploy trong ngày vì gần như không gây gián đoạn và lùi được ngay; còn index thì gom sang khung đêm cùng DBA, vì server chạy bản Standard, tạo index sẽ khoá bảng. Mỗi đề xuất có số đo trước, rủi ro, đường lui và tiêu chí nghiệm thu. Ví dụ rõ nhất là API bắt đầu thi: tôi lần theo trace và thấy hàm làm mới cache quét toàn bộ keyspace Redis hàng trăm vòng trong một request; đồng nghiệp sửa theo hướng tôi đề xuất, và trace điển hình giảm từ hơn 2 giây xuống dưới 0,1 giây. Đó là trace điển hình trên APM, cùng khung giờ trước và sau."
 
 Điểm ăn điểm:
 - Có ngoại lệ "rủi ro sập trước" trước khi nói tới thứ tự thường.
@@ -842,13 +842,13 @@ Kế hoạch hai tầng là việc thật của bạn: sửa proc trong ngày v�
 #### Bài tập
 1. Sắp xếp theo thứ tự triển khai: thêm index cho proc tìm feed; cài CU cho SQL Server 2019 RTM; backup log cho DB đầy gần 100%; cache đề theo mã đề; tách bảng log sang replica.
    **Đáp án:** Backup log cho DB đầy (rủi ro sập) → cache đề (code) → index proc tìm feed (khung đêm) → cài CU (khung bảo trì) → tách bảng log sang replica (kiến trúc).
-2. Viết lại câu "Tôi đã giảm 90% CPU của cụm" cho trung thực khi bạn chỉ dẫn rà soát và đề xuất, đồng nghiệp triển khai, số đo là ước lượng.
-   **Đáp án:** "Tôi dẫn đợt rà soát và viết đề xuất; đồng nghiệp triển khai. Theo ước lượng từ Query Store, các thay đổi đó có thể giảm đáng kể CPU của nhóm proc nóng; số đo sau triển khai tôi chưa có đầy đủ."
+2. Viết lại câu "Tôi đã giảm 90% CPU của cụm" cho đúng vai trò và đúng thước đo, biết rằng bạn dẫn rà soát và viết script index, DBA chạy trong khung đêm.
+   **Đáp án:** "Tôi dẫn đợt rà soát, viết danh sách index và script; DBA chạy trong khung đêm. CPU giờ cao điểm của cụm chính giảm khoảng một phần ba, so cùng khung giờ, cùng ngày trong tuần, trên monitoring của DBA."
 
 ## Chương 23. Ngoài báo cáo: tối ưu cho hệ thống lớn
 Đợt rà soát tập trung vào SQL Server và cách ứng dụng gọi nó. Khi hệ thống lớn lên, nút thắt chuyển sang chỗ khác: một dòng dữ liệu bị cập nhật dồn dập, cache phân tán, hàng đợi, giới hạn tải, runtime .NET, mạng, và chi phí. Chương này không phủ hết kiến thức tối ưu, nhưng phủ các mảng một backend senior hay bị hỏi.
 
-Phần lớn nội dung chương là kiến thức bạn chưa làm hết ở dự án, nên mỗi bài đều chỉ rõ phần nào bạn có trải nghiệm thật và cách nói trung thực cho phần còn lại: "ở dự án tôi chưa triển khai, nếu làm tôi sẽ thiết kế thế này". Với bài toán kỳ thi (tải dồn theo ca, đỉnh ở đầu và cuối ca), thứ tự ưu tiên hợp lý là: kiểm soát lượng người vào thi và hàng đợi cho nộp bài; nạp sẵn cache đề và chống stampede; xử lý dòng nóng; kho cột cho báo cáo; load test dạng spike trên dữ liệu cỡ thật.
+Phần lớn nội dung chương là kiến thức bạn chưa làm hết ở dự án, nên mỗi bài đều chỉ rõ phần nào bạn có trải nghiệm thật và cách nói gọn cho phần còn lại: "ở dự án tôi chưa triển khai, nếu làm tôi sẽ thiết kế thế này". Với bài toán kỳ thi (tải dồn theo ca, đỉnh ở đầu và cuối ca), thứ tự ưu tiên hợp lý là: kiểm soát lượng người vào thi và hàng đợi cho nộp bài; nạp sẵn cache đề và chống stampede; xử lý dòng nóng; kho cột cho báo cáo; load test dạng spike trên dữ liệu cỡ thật.
 
 Sách nên đọc: *Designing Data-Intensive Applications* (Kleppmann), *Database Internals* (Petrov), *Systems Performance* (Gregg), *Release It!* (Nygard), *Site Reliability Engineering* (Google), *Pro .NET Memory Management* (Kokosa).
 
@@ -888,7 +888,7 @@ Columnstore lưu theo cột: dữ liệu chia thành rowgroup tối đa khoảng
 ##### In-Memory OLTP và Intelligent Query Processing
 Bảng memory-optimized nằm trong RAM, không dùng khoá và latch, có hai mức bền: `SCHEMA_AND_DATA` và `SCHEMA_ONLY` (mất khi restart, hợp cho session, staging). Đánh đổi: tốn RAM, hạn chế tính năng, vận hành phức tạp hơn.
 
-Intelligent Query Processing là nhóm tính năng optimizer tự điều chỉnh, bật theo compatibility level: 2017 có adaptive join, memory grant feedback; 2019 có batch mode trên rowstore, table variable deferred compilation, scalar UDF inlining; 2022 có Parameter Sensitive Plan optimization, DOP feedback, Query Store hints. Nâng compat level có rủi ro hồi quy plan: bật Query Store trước, nâng, so sánh, force plan cũ cho truy vấn bị hồi quy.
+Intelligent Query Processing là nhóm tính năng optimizer tự điều chỉnh, bật theo compatibility level: 2017 có adaptive join, memory grant feedback; 2019 có batch mode trên rowstore (chỉ Enterprise), table variable deferred compilation, scalar UDF inlining; 2022 có Parameter Sensitive Plan optimization, DOP feedback, Query Store hints. Nâng compat level có rủi ro hồi quy plan: bật Query Store trước, nâng, so sánh, force plan cũ cho truy vấn bị hồi quy.
 
 ##### Ghi theo lô và sinh ID
 Mỗi dòng một lần gọi là một round-trip và một lần chờ `WRITELOG`. Gom bằng **TVP** (truyền nhiều dòng vào proc trong một lần gọi) hoặc **`SqlBulkCopy`** cho hàng nghìn tới hàng triệu dòng.
@@ -907,7 +907,7 @@ GUID ngẫu nhiên làm clustered key gây chèn vào giữa index, page split, 
 Sharding chia dữ liệu ra nhiều DB theo shard key; khó ở truy vấn và transaction chéo shard, chia lại khi thêm node. Đúng việc đúng kho: Elasticsearch cho tìm kiếm toàn văn, ClickHouse cho phân tích cột rất lớn, object storage cho file. Indexed view là một dạng read model ngay trong SQL Server: kết quả tổng hợp được lưu sẵn, đổi lại mỗi lần ghi bảng gốc tốn thêm.
 
 #### Cách show off
-Trải nghiệm thật bạn có ở đây là application lock: trong một sự kiện, bạn dùng `sp_getapplock` để đảm bảo mỗi người chỉ được chèn kết quả một lần dù request tới đồng thời. Nếu không có số đo bản ghi trùng trước và sau, đừng đưa ra con số; kể cơ chế là đủ. Các phần còn lại (sharded counter, columnstore) nói theo hướng thiết kế. Phía báo cáo, kho dữ liệu hiện chạy job SQL Agent mỗi giờ; columnstore là bước nên thử trước khi nghĩ tới kho khác.
+Trải nghiệm thật bạn có ở đây là application lock: trong một sự kiện, bạn dùng `sp_getapplock` để đảm bảo mỗi người chỉ được chèn kết quả một lần dù request tới đồng thời. Kết quả: trước đó có vài chục bản ghi trùng mỗi ngày dồn vào giờ cao điểm, sau khi deploy về 0, đếm bằng câu nhóm theo người và vòng có hơn một kết quả, theo ngày. Các phần còn lại (sharded counter, columnstore) nói theo hướng thiết kế. Phía báo cáo, kho dữ liệu hiện chạy job SQL Agent mỗi giờ; columnstore là bước nên thử trước khi nghĩ tới kho khác.
 
 > **Ví dụ:** "Trong một sự kiện, mỗi người chơi chỉ được ghi kết quả một lần, nhưng client có thể gửi hai request gần như cùng lúc, và kiểu kiểm tra 'đã có kết quả chưa rồi mới chèn' có thể lọt khi hai request chạy song song. Tôi dùng application lock theo người chơi và sự kiện, giữ trong transaction rất ngắn, nên hai request cùng người bị tuần tự hoá còn người khác không ảnh hưởng nhau. Với bộ đếm tổng của cả sự kiện, nếu số lượt cập nhật lên tới hàng nghìn mỗi giây thì một dòng sẽ thành điểm nghẽn; khi đó tôi sẽ tách thành nhiều dòng rồi cộng khi đọc, hoặc đếm trên Redis rồi ghi xuống theo lô nếu chấp nhận lệch nhỏ. Còn số dư hay số quà thì không gom lô, chỉ dùng câu cập nhật có điều kiện. Phần tách bộ đếm tôi chưa phải làm ở dự án, vì tải chưa tới mức đó."
 
@@ -1242,15 +1242,15 @@ finally { ArrayPool<byte>.Shared.Return(buffer); }
 ReadyToRun biên dịch trước một phần, giảm JIT lúc khởi động. Native AOT biên dịch toàn bộ thành mã máy: khởi động nhanh, bộ nhớ thấp; ASP.NET Core hỗ trợ từ .NET 8 cho minimal API và gRPC, không hỗ trợ MVC, thư viện dùng reflection động có thể không chạy. Hợp cho function, sidecar, service cần scale-out nhanh.
 
 #### Cách show off
-Việc thật bạn có ở mảng runtime là nâng cấp hàng chục project của nhiều service lên .NET 10. Đừng biến nó thành câu chuyện hiệu năng nếu không đo; kể nó như một việc giảm rủi ro và mở đường cho các tính năng runtime mới. Phần starvation, GC: nói theo cách bạn sẽ chẩn đoán.
+Việc thật bạn có ở mảng runtime là nâng cấp hàng chục project của nhiều service lên .NET 10. Kể nó trước hết như một việc giảm rủi ro (hỗ trợ dài hạn, bản vá bảo mật); phần hiệu năng là lợi ích phụ, CPU trung bình của pod giảm khoảng một phần mười, đo trên Prometheus cùng khung giờ. Phần starvation, GC: nói theo cách bạn sẽ chẩn đoán.
 
-> **Ví dụ:** "Tôi phụ trách đưa các service phía backend lên .NET 10, khoảng vài chục project. Phần khó không nằm ở đổi target framework, mà ở các thư viện dùng chung đã được tổ chức lại, nên phải sửa namespace, đăng ký DI và cấu hình cho từng service rồi chạy thật để kiểm. Tôi không nói là nâng cấp làm hệ thống nhanh hơn bao nhiêu, vì tôi không có số đo trước sau theo cùng tải. Về chẩn đoán runtime, nếu gặp API chậm dần khi tải tăng mà CPU thấp, tôi nghi thread pool bị đói do code chặn đồng bộ trên Task; tôi xem `dotnet-counters` để thấy hàng đợi thread pool dài và số thread tăng đều, rồi lấy dump xem các thread đang kẹt ở đâu. Cách sửa là async xuyên suốt, không phải tăng số thread tối thiểu."
+> **Ví dụ:** "Tôi phụ trách đưa các service phía backend lên .NET 10, khoảng vài chục project. Phần khó không nằm ở đổi target framework, mà ở các thư viện dùng chung đã được tổ chức lại, nên phải sửa namespace, đăng ký DI và cấu hình cho từng service rồi chạy thật để kiểm. Lý do chính là hỗ trợ dài hạn và bản vá bảo mật; hiệu năng là phần thưởng thêm, CPU trung bình của pod giảm khoảng một phần mười trên Prometheus, so cùng khung giờ trước và sau. Về chẩn đoán runtime, nếu gặp API chậm dần khi tải tăng mà CPU thấp, tôi nghi thread pool bị đói do code chặn đồng bộ trên Task; tôi xem `dotnet-counters` để thấy hàng đợi thread pool dài và số thread tăng đều, rồi lấy dump xem các thread đang kẹt ở đâu. Cách sửa là async xuyên suốt, không phải tăng số thread tối thiểu."
 
 Điểm ăn điểm:
 - Triệu chứng đặc trưng của starvation: CPU thấp, latency tăng theo bậc, thread tăng đều.
 - Biết `SetMinThreads` chỉ che triệu chứng.
 - Đo bằng profiler trước khi tối ưu cấp phát; chỉ tối ưu đoạn nóng.
-- Không gắn số hiệu năng cho việc nâng cấp khi không có số đo.
+- Đặt đúng thứ tự lý do nâng cấp: hỗ trợ dài hạn và bảo mật trước, số CPU sau, kèm nguồn đo.
 
 #### Câu hỏi vặn
 - **"API chậm dần khi tải tăng nhưng CPU chỉ 20%, anh nghi gì?"** Nghi thread pool starvation do sync-over-async. Kiểm tra `dotnet-counters` (queue length cao, thread count tăng dần), lấy `dotnet-dump` xem nhiều thread chặn ở `.Result`/`.Wait()`. Sửa bằng async xuyên suốt.
@@ -1258,13 +1258,13 @@ Việc thật bạn có ở mảng runtime là nâng cấp hàng chục project 
 - **"Large Object Heap là gì, sao cần tránh cấp phát lớn liên tục?"** Đối tượng từ 85.000 byte vào LOH, chỉ thu gom cùng Gen2 và mặc định không nén, dễ phân mảnh và kéo theo GC Gen2 đắt. Dùng `ArrayPool`, chia nhỏ, stream thay vì đọc cả khối.
 - **"Span<T> giúp gì và có giới hạn gì?"** Làm việc trên một đoạn mảng, chuỗi hay bộ nhớ stack mà không cấp phát. Là `ref struct` nên không làm field của class, không dùng qua `await`; trong async thì dùng `Memory<T>`.
 - **"Khi nào chọn Native AOT?"** Khi khởi động nhanh và bộ nhớ thấp quan trọng: function, service scale-out theo đỉnh, sidecar. Đổi lại không có MVC, hạn chế reflection động, thư viện phải tương thích trimming; thông lượng chạy lâu dài không chắc tốt hơn JIT.
-- **"Nâng lên .NET 10 thì nhanh hơn bao nhiêu?"** Tôi không có số đo trước sau cùng tải nên không đưa con số. Lý do nâng là hỗ trợ dài hạn, bản vá bảo mật và các cải tiến runtime; nếu cần chứng minh hiệu năng, tôi sẽ chạy cùng một kịch bản load test trên hai phiên bản.
+- **"Nâng lên .NET 10 thì nhanh hơn bao nhiêu?"** CPU trung bình của pod giảm nhẹ, khoảng một phần mười, đo trên Prometheus cùng khung giờ trước và sau. Nhưng lý do chính để nâng là hỗ trợ dài hạn và bản vá bảo mật; phần CPU là lợi ích đi kèm từ các cải tiến runtime.
 - **"Có nên tăng ThreadPool.SetMinThreads cho nhanh?"** Chỉ như biện pháp tạm khi đang sự cố. Nó che triệu chứng, mỗi thread tốn bộ nhớ stack, và lỗi gốc (code chặn đồng bộ) vẫn còn đó.
 
 #### Bẫy cần tránh
 - Tối ưu cấp phát ở đoạn code không nóng: phức tạp hơn mà không đổi được gì.
 - Quên trả buffer về `ArrayPool` hoặc dùng buffer sau khi đã trả.
-- Nhận nâng cấp phiên bản là "tối ưu hiệu năng" khi không có số đo.
+- Kể nâng cấp phiên bản như một dự án "tối ưu hiệu năng": lý do chính là hỗ trợ dài hạn và bảo mật, CPU giảm chỉ là lợi ích đi kèm.
 
 #### Nhớ nhanh
 - Sync-over-async gây thread pool starvation; sửa bằng async xuyên suốt.
@@ -1472,9 +1472,9 @@ FinOps gắn chi phí hạ tầng với giá trị nghiệp vụ. Chỉ số cơ
 - **Lưu trữ**: dọn bảng backup, DB OFFLINE, log cũ; phân tầng lạnh. **Truyền dữ liệu**: phí egress, CDN và nén giảm egress.
 
 #### Cách show off
-Phần thật là các phát hiện về lưu trữ trong đợt rà soát (bảng backup tạo tay, DB OFFLINE, log tích nhiều năm) và lập luận chọn bản Standard thay vì nâng Enterprise chỉ để có online index. FinOps, chi phí trên mỗi lượt thi là khung bạn đề xuất, chưa có số liệu thật; đừng đưa con số tiền.
+Phần thật là các phát hiện về lưu trữ trong đợt rà soát (bảng backup tạo tay, DB OFFLINE, log tích nhiều năm) và lập luận chọn bản Standard thay vì nâng Enterprise chỉ để có online index. FinOps, chi phí trên mỗi lượt thi là việc chưa làm: nhận một câu rồi trình bày cách sẽ đo.
 
-> **Ví dụ:** "Trong đợt rà soát, phần lưu trữ có nhiều thứ không ai sở hữu: hàng trăm triệu dòng trong các bảng backup tạo tay, vài database để offline nhưng file vẫn nằm trên đĩa, log lỗi tích từ nhiều năm. Những thứ đó không chỉ tốn đĩa mà còn làm backup và restore lâu hơn. Tôi đề xuất mỗi bảng lớn một chính sách giữ dữ liệu, dữ liệu lạnh chuyển ra kho rẻ nhưng vẫn có đường đọc lại cho tra cứu khiếu nại. Về license, khi cần tạo index lớn, tôi chọn dời sang khung đêm thay vì đề xuất nâng Enterprise, vì license tính theo core và chênh lệch rất lớn. Nếu được làm tiếp, tôi muốn theo dõi chi phí trên mỗi lượt thi để biết tối ưu nào giảm tiền thật; hiện tôi chưa có số liệu đó."
+> **Ví dụ:** "Trong đợt rà soát, phần lưu trữ có nhiều thứ không ai sở hữu: hàng trăm triệu dòng trong các bảng backup tạo tay, vài database để offline nhưng file vẫn nằm trên đĩa, log lỗi tích từ nhiều năm. Những thứ đó không chỉ tốn đĩa mà còn làm backup và restore lâu hơn. Tôi đề xuất mỗi bảng lớn một chính sách giữ dữ liệu, dữ liệu lạnh chuyển ra kho rẻ nhưng vẫn có đường đọc lại cho tra cứu khiếu nại. Về license, khi cần tạo index lớn, tôi chọn dời sang khung đêm thay vì đề xuất nâng Enterprise, vì license tính theo core và chênh lệch rất lớn. Việc tôi muốn làm tiếp là theo dõi chi phí trên mỗi lượt thi: lấy chi phí hạ tầng theo tháng chia theo service, chia cho số lượt thi trong tháng, để biết tối ưu nào giảm tiền thật."
 
 Điểm ăn điểm:
 - Nói chi phí theo đơn vị nghiệp vụ, không chỉ theo tài nguyên.
@@ -1488,7 +1488,7 @@ Phần thật là các phát hiện về lưu trữ trong đợt rà soát (bả
 - **"Right-sizing server SQL Server cần lưu ý gì?"** Dựa trên p95 utilization và đỉnh theo mùa thi, không theo trung bình; license theo core nên giảm core thừa tiết kiệm lớn; giảm RAM thì kiểm tra buffer pool và page life expectancy; thử trên replica hoặc môi trường test trước.
 - **"Khi nào bật page compression?"** Bảng lớn, đọc nhiều, I/O là nút thắt, CPU còn dư. Không hợp với bảng ghi rất nóng khi CPU đang cao. Ước lượng bằng `sp_estimate_data_compression_savings`, bật trên partition cũ trước.
 - **"Đưa log cũ vào tầng archive của cloud cho rẻ có vấn đề gì?"** Lấy lại mất nhiều giờ và tốn phí truy xuất. Dữ liệu còn có thể cần cho khiếu nại hay đối soát thì để tầng cool hoặc bảng archive, chỉ dữ liệu gần như không bao giờ đọc mới vào archive.
-- **"Anh có số tiết kiệm được bao nhiêu không?"** Không. Tôi chỉ ra các nguồn lãng phí và đề xuất chính sách; số tiền cụ thể cần dữ liệu chi phí hạ tầng mà tôi không nắm. Tôi không ước đoán con số khi kể.
+- **"Anh có số tiết kiệm được bao nhiêu không?"** Tôi tính theo tài nguyên, vì hoá đơn hạ tầng do bộ phận khác quản lý: dọn bảng backup tạo tay và database offline trả lại dung lượng đĩa, backup và restore nhanh hơn. Bước tiếp theo tôi đề xuất là gắn chi phí với mỗi lượt thi để quy ra tiền.
 
 #### Bẫy cần tránh
 - Right-sizing theo trung bình: máy đủ cho ngày thường, sập ở đỉnh kỳ thi.

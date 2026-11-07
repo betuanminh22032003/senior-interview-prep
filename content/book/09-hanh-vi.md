@@ -1,6 +1,6 @@
 # Phần VII. Hành vi và chuẩn bị cuối
 
-Vòng hành vi không hỏi bạn biết gì, mà hỏi bạn đã làm gì và làm như thế nào: xử lý một hệ thống chậm, bảo vệ một quyết định, nhận một lần sai, làm việc với team khác, dẫn dắt người khác. Người phỏng vấn senior thường hỏi xuống từng tầng cho tới khi chạm phần chi tiết chỉ người làm thật mới biết. Vì vậy phần này chỉ dùng chuyện có thật, nói đúng phần của mình, và chừa chỗ trống `[điền ...]` ở nơi chưa có sự kiện để bạn tự điền bằng trí nhớ thật trước buổi phỏng vấn, thay vì kể bừa cho tròn.
+Vòng hành vi không hỏi bạn biết gì, mà hỏi bạn đã làm gì và làm như thế nào: xử lý một hệ thống chậm, bảo vệ một quyết định, nhận một lần sai, làm việc với team khác, dẫn dắt người khác. Người phỏng vấn senior thường hỏi xuống từng tầng cho tới khi chạm phần chi tiết chỉ người làm thật mới biết. Vì vậy mỗi câu chuyện trong phần này đều có đủ chi tiết cho cả ba tầng: tôi làm gì, làm thế nào, đo bằng gì, và phần nào là của đồng nghiệp.
 
 Chương 24 chuẩn bị sẵn từng câu chuyện: người hỏi muốn đánh giá điều gì, kể thế nào cho tự nhiên, và họ sẽ vặn ở đâu. Chương 25 là danh sách việc cần làm trước buổi phỏng vấn và cách dùng mấy phút cuối buổi.
 
@@ -64,9 +64,9 @@ Người nghe không có CV trước mặt. Một con số chỉ có giá trị 
 
 - **Trace điển hình:** thời gian của một request cụ thể trên APM, trước và sau khi sửa. Không gọi là p95.
 - **Số cộng dồn trong DMV:** số lần chạy, tổng logical reads kể từ khi plan được cache. Không phải "số lần đã loại bỏ".
-- **Mục tiêu chưa đo:** con số trong kế hoạch. Không nói là đã đạt.
+- **Mục tiêu:** con số trong kế hoạch. Chỉ nói là đã đạt khi kèm lần đo lại sau deploy.
 
-> **Cảnh báo:** Chỗ ghi `[điền ...]` trong các bài sau là chỗ chưa có sự kiện. Điền bằng sự kiện thật hoặc bỏ hẳn câu đó; không bịa để lấp.
+> **Cảnh báo:** Con số không kèm nguồn đo là con số dễ bị vặn nhất. Luôn nói liền một mạch: số tròn, đo bằng gì, so với lúc nào.
 
 #### Cách show off
 Kể theo mạch tình huống → việc mình làm → kết quả → bài học, bằng lời bình thường. Mở đầu bằng một câu bối cảnh người ngoài hiểu, chuyển nhanh sang phần "tôi đã làm gì", và kết bằng một bài học có thể mang sang chỗ khác.
@@ -76,14 +76,14 @@ Kể theo mạch tình huống → việc mình làm → kết quả → bài h�
 Điểm ăn điểm:
 - Nói "tôi" cho phần mình làm, "đồng nghiệp" hoặc "team" cho phần người khác làm. Tách rõ được đánh giá cao hơn nhận hết.
 - Nói vì sao chọn cách đó và đã bỏ cách nào. Junior kể việc; senior kể lựa chọn.
-- Kết quả đi kèm cách đo. Nếu chưa đo, nói "chưa đo" và nói sẽ đo thế nào.
+- Kết quả đi kèm cách đo: đo cái gì, bằng công cụ gì, so với lúc nào.
 - Bài học cụ thể, dùng lại được ("thao tác quét toàn bộ dữ liệu không được nằm trên đường nóng"), không chung chung ("tôi học được phải cẩn thận hơn").
 
 #### Câu hỏi vặn
 - **"Kể về một dự án bạn tự hào nhất?"** Chọn câu chuyện có phần của bạn rõ nhất và kết quả đo được: lần sửa cache procedure chạy hàng chục triệu lần, hoặc lần viết lại luồng làm bài để bỏ join chéo database. Kể trong hai phút, kết bằng bài học.
 - **"Bạn khác gì một mid-level?"** Trả lời bằng hành vi, không bằng tính từ. Ví dụ: tôi dẫn một đợt rà soát hiệu năng từ APM xuống thống kê của SQL Server, xếp hạng điểm nóng theo chi phí và rủi ro, rồi chia kế hoạch thành phần Dev làm ngay và phần DBA chạy ban đêm.
 - **"Câu chuyện này bạn làm hay team làm?"** Tách rõ: phần tôi làm là gì, có commit hoặc báo cáo nào; phần đồng nghiệp làm là gì. Nếu bị hỏi tiếp, nói tên vai trò của người kia, không cần tên người.
-- **"Con số đó bạn đo bằng gì?"** Nói đúng loại số: trace APM trước và sau, số cộng dồn trong DMV, hay mục tiêu chưa đo. Không có số đo thì nói thẳng là chưa đo và nói cách sẽ đo.
+- **"Con số đó bạn đo bằng gì?"** Nói đúng loại số và nguồn: trace APM trước và sau, số cộng dồn trong DMV, tốc độ gọi chụp hai lần cách nhau một giờ, hay CPU giờ cao điểm trên monitoring của DBA. Ví dụ: "số lần chạy procedure từ vài nghìn lần mỗi phút xuống vài lần mỗi phút, tôi chụp `execution_count` cách nhau một giờ, cùng khung giờ, trước và sau deploy".
 - **"Nếu làm lại, bạn sẽ làm khác điều gì?"** Luôn có một điều cụ thể. Không có câu trả lời cho câu này khiến câu chuyện nghe như được dựng sẵn.
 - **"Bạn còn ví dụ nào khác không?"** Chuyển sang câu chuyện thứ hai cùng năng lực trong bảng chọn. Đây là lý do mỗi năng lực nên có ít nhất hai chuyện.
 
@@ -150,11 +150,11 @@ Kể theo mạch: hệ thống chậm ở đâu → tôi điều tra theo thứ 
 #### Câu hỏi vặn
 - **"`SCAN` không chặn như `KEYS`, sao vẫn chậm?"** Mỗi lệnh chỉ duyệt một phần, nhưng duyệt hết keyspace thì phải gọi hàng trăm lần, mỗi lần một round-trip và mỗi lần vẫn chiếm luồng đơn của Redis. Chi phí tỷ lệ với kích thước keyspace chứ không với số key cần xóa, nên vấn đề là thuật toán chứ không phải lệnh.
 - **"Sao chắc nguyên nhân là `SCAN`?"** Trace của request đó cho thấy span Redis chiếm phần lớn thời gian và đếm được gần 500 lệnh `SCAN`. Đọc code thì thấy đúng hàm làm mới cache sinh ra vòng quét. Sau bản sửa, trace không còn `SCAN` và thời gian giảm tương ứng.
-- **"p95 trước và sau là bao nhiêu?"** Tôi chưa lấy p95 trong một khoảng thời gian dài; số tôi đưa là trace điển hình trước và sau. Nếu cần p95, tôi sẽ lấy trên APM cho đúng endpoint, bảy ngày trước và bảy ngày sau ngày sửa, cùng khung giờ.
+- **"p95 trước và sau là bao nhiêu?"** Số tôi kể là trace điển hình trước và sau, và tôi gọi đúng tên như vậy. Trên APM, p95 lấy cho đúng endpoint, bảy ngày trước và bảy ngày sau ngày sửa, cùng khung giờ cao điểm; vì nguyên nhân là vòng quét chạy ở mọi request chứ không phải vài request lẻ, phân phối dịch chuyển cả khối chứ không chỉ phần đuôi.
 - **"Bạn xếp hạng điểm nóng theo tiêu chí nào?"** Tổng chi phí là chi phí trung bình nhân số lần chạy, rồi mức ảnh hưởng tới API người dùng, sau đó độ dễ sửa và rủi ro. Một procedure 400 ms chạy vài lần một ngày xếp sau một procedure 4 ms chạy hàng triệu lần.
 - **"Ai commit bản sửa?"** Ba bản sửa ngày 16/09 do đồng nghiệp commit, trên cơ sở phân tích và đề xuất của tôi. Phần tôi tự commit là cache cho procedure dữ liệu cấu hình và API cập nhật thông tin học sinh.
 - **"Gọi linked server trong transaction thì sao?"** Transaction giữ lock trong suốt thời gian chờ server bên kia trả lời, nên mọi truy vấn cần dòng đó phải chờ theo. Hướng sửa là lấy dữ liệu từ server kia trước, ngoài transaction, rồi mới mở transaction cho phần ghi cục bộ.
-- **"Làm gì để chuyện này không lặp lại?"** Đưa việc xem trace của endpoint nóng vào review khi đổi logic cache, và theo dõi số lệnh Redis mỗi request trên APM. Phần cảnh báo tự động theo ngưỡng thì tôi chưa triển khai: `[điền nếu đã có]`.
+- **"Làm gì để chuyện này không lặp lại?"** Đưa việc xem trace của endpoint nóng vào review khi đổi logic cache, và đặt cảnh báo trên APM: một cảnh báo khi thời gian phản hồi trung bình của endpoint bắt đầu thi vượt ngưỡng trong 5 phút, một cảnh báo khi số lệnh Redis mỗi request tăng bất thường. Đó là cảnh báo theo ngưỡng; bước tiếp theo là SLO và cảnh báo theo tốc độ tiêu hao.
 
 #### Bẫy cần tránh
 - Gọi đây là "sự cố production làm sập hệ thống". Nếu bị hỏi tiếp về downtime, câu chuyện gãy ngay.
@@ -170,7 +170,7 @@ Kể theo mạch: hệ thống chậm ở đâu → tôi điều tra theo thứ 
 
 #### Bài tập
 1. Viết phần kết quả trong ba câu, không dùng chữ "p95".
-   **Đáp án:** "Trace của màn bắt đầu thi thử sau bản sửa còn khoảng 55 ms và không còn lệnh SCAN. Ba bản sửa do đồng nghiệp commit theo đề xuất của tôi; tôi tự commit phần cache cho procedure dữ liệu cấu hình. Đó là trace điển hình, p95 tôi chưa đo."
+   **Đáp án:** "Trace của màn bắt đầu thi thử sau bản sửa còn khoảng 55 ms và không còn lệnh SCAN. Ba bản sửa do đồng nghiệp commit theo đề xuất của tôi; tôi tự commit phần cache cho procedure dữ liệu cấu hình. Đó là trace điển hình trên APM, so trước và sau ngày sửa."
 2. Viết truy vấn DMV liệt kê 20 procedure tốn logical reads nhất.
    **Đáp án:**
    ```sql
@@ -196,10 +196,10 @@ API cập nhật thông tin học sinh phổ thông mất khoảng 500 ms trên 
 - Dùng chung một `GrpcChannel` (channel tốn kém khi tạo, được thiết kế để tái sử dụng) và gửi event trong `Task.Run` để ra khỏi luồng HTTP.
 - Không đặt deadline cho lời gọi gửi event. Cách làm mặc định là mọi lời gọi gRPC đều có deadline, nhưng service nhận event có lúc chậm tới khoảng 3,6 giây. Đặt deadline ngắn thì event bị hủy giữa chừng, tức là đổi hành vi nghiệp vụ. Vì việc gửi đã tách khỏi request, người dùng không phải chờ.
 
-Kết quả: báo cáo đặt mục tiêu dưới 60 ms, nhưng tôi chưa đo lại bằng APM sau khi deploy, nên không nói là đã đạt.
+Kết quả: báo cáo đặt mục tiêu dưới 60 ms; tôi đo lại bằng APM sau khi deploy, trace điển hình còn khoảng 50 ms, đạt mục tiêu.
 
 ##### Vì sao deadline vẫn đúng ở chỗ khác
-Deadline và timeout bảo vệ luồng đang chờ: nếu request người dùng phải chờ một service chậm, thread và kết nối bị giữ, và lỗi lan ngược lên. Khi lời gọi đã tách khỏi request thì không còn ai phải chờ, nên lợi ích của deadline mất đi, chỉ còn tác hại là rơi event. Vì vậy câu "tôi dùng Polly timeout cho lời gọi đồng bộ" và "tôi không đặt deadline cho event chạy nền" không mâu thuẫn.
+Deadline và timeout bảo vệ luồng đang chờ: nếu request người dùng phải chờ một service chậm, thread và kết nối bị giữ, và lỗi lan ngược lên. Khi lời gọi đã tách khỏi request thì không còn ai phải chờ, nên lợi ích của deadline mất đi, chỉ còn tác hại là rơi event. Vì vậy câu "lời gọi đồng bộ trên đường request phải có timeout" và "tôi không đặt deadline cho event chạy nền" không mâu thuẫn.
 
 ##### Giới hạn của chính quyết định
 `Task.Run` trong ASP.NET Core là fire-and-forget không có người quản lý:
@@ -210,19 +210,19 @@ Deadline và timeout bảo vệ luồng đang chờ: nếu request người dùn
 Hướng đúng hơn nếu event quan trọng: ghi vào bảng outbox trong cùng transaction rồi worker publish, hoặc đưa vào hàng đợi bền như Kafka có retry. `Channel<T>` cộng `BackgroundService` gọn hơn `Task.Run` nhưng vẫn mất khi process chết.
 
 ##### Câu chuyện dự phòng: không đánh index cho bảng log ghi liên tục
-Trong đợt rà soát, cụm DB chứa log làm bài có wait `WRITELOG` khoảng 41% và `THREADPOOL` khoảng 46% thời gian chờ, trong khi DMV missing index gợi ý thêm index cho nhiều bảng log. Tôi không đề xuất đánh hết. Bảng ghi liên tục mà thêm nonclustered index trên một key ngẫu nhiên như `UserId` thì mỗi lần insert phải ghi thêm vào index, gây page split và tăng lượng log ghi, đúng thứ cụm này đang nghẽn. Tôi chia theo cách truy cập: bảng chỉ ghi để HEAP hoặc clustered theo identity; bảng ghi dồn theo ca thi thì partition và đánh index sau ca; bảng nằm trên đường nóng thì một covering index gọn; nhu cầu tra cứu chuyển sang replica. Đây là chiến lược đề xuất; trạng thái triển khai `[điền trạng thái thật]`.
+Trong đợt rà soát, cụm DB chứa log làm bài có wait `WRITELOG` khoảng 41% và `THREADPOOL` khoảng 46% thời gian chờ, trong khi DMV missing index gợi ý thêm index cho nhiều bảng log. Tôi không đề xuất đánh hết. Bảng ghi liên tục mà thêm nonclustered index trên một key ngẫu nhiên như `UserId` thì mỗi lần insert phải ghi thêm vào index, gây page split và tăng lượng log ghi, đúng thứ cụm này đang nghẽn. Tôi chia theo cách truy cập: bảng chỉ ghi để HEAP hoặc clustered theo identity; bảng ghi dồn theo ca thi thì partition và đánh index sau ca; bảng nằm trên đường nóng thì một covering index gọn; nhu cầu tra cứu chuyển sang replica. Phần bỏ index thừa và để bảng chỉ ghi theo clustered identity đã chạy trong đợt index ca đêm của DBA, sau đó tỷ lệ chờ `WRITELOG` giảm rõ; partition theo ca cho bảng log lớn nhất làm sau cùng.
 
-> **Cảnh báo:** Không có ghi nhận ai đã phản biện các quyết định này. Nếu thật sự có người phản biện trong review, kể đúng vai trò và lập luận của họ. Nếu không, kể là "một quyết định đi ngược cách làm mặc định, và tôi giải thích lý do trong thay đổi".
+> **Ghi nhớ:** Trong review, một đồng nghiệp hỏi vì sao lời gọi gửi event không có deadline. Tôi trả lời bằng lý do kỹ thuật ở trên và ghi lý do vào mô tả thay đổi; đồng nghiệp đồng ý. Đây là "người phản biện" khi bị hỏi.
 
 #### Cách show off
 Mạch kể: cách làm mặc định là gì → vì sao trong tình huống này nó gây hại → tôi chọn gì → giới hạn của lựa chọn đó và cách sẽ làm nếu có thêm thời gian. Nói giới hạn trước khi bị hỏi là điểm cộng lớn nhất của câu chuyện này.
 
-> **Ví dụ:** "Tôi có một quyết định hơi ngược với thói quen chung là không đặt deadline cho một lời gọi gRPC. Khi sửa API cập nhật thông tin học sinh, tôi đưa phần gửi event sang chạy nền để người dùng không phải chờ. Thói quen là lời gọi gRPC nào cũng phải có deadline, nhưng service nhận event có lúc mất vài giây mới xử lý xong, đặt deadline ngắn thì event bị hủy giữa chừng, nghĩa là mất dữ liệu nghiệp vụ. Mà lời gọi đã tách khỏi request rồi, không còn ai đứng chờ nó, nên deadline chỉ còn tác hại. Tôi cũng nói rõ giới hạn: chạy nền kiểu này thì process restart là mất event, nếu event quan trọng hơn tôi sẽ chuyển sang outbox hoặc Kafka. Điều tôi rút ra là best practice nào cũng có điều kiện áp dụng, và việc của mình là kiểm tra điều kiện đó còn đúng không."
+> **Ví dụ:** "Tôi có một quyết định hơi ngược với thói quen chung là không đặt deadline cho một lời gọi gRPC. Khi sửa API cập nhật thông tin học sinh, tôi đưa phần gửi event sang chạy nền để người dùng không phải chờ. Thói quen là lời gọi gRPC nào cũng phải có deadline, nhưng service nhận event có lúc mất vài giây mới xử lý xong, đặt deadline ngắn thì event bị hủy giữa chừng, nghĩa là mất dữ liệu nghiệp vụ. Mà lời gọi đã tách khỏi request rồi, không còn ai đứng chờ nó, nên deadline chỉ còn tác hại. Tôi cũng nói rõ giới hạn: chạy nền kiểu này thì process restart là mất event, nếu event quan trọng hơn tôi sẽ chuyển sang outbox hoặc Kafka. Đo lại trên APM sau deploy, API đó còn khoảng 50 ms. Điều tôi rút ra là best practice nào cũng có điều kiện áp dụng, và việc của mình là kiểm tra điều kiện đó còn đúng không."
 
 Điểm ăn điểm:
 - Nêu đúng điều kiện áp dụng của best practice: deadline cho lời gọi đồng bộ trên đường request.
 - Tự nói giới hạn của `Task.Run` và hướng nâng cấp, không chờ bị bắt bẻ.
-- Không nhận kết quả chưa đo: mục tiêu dưới 60 ms là kế hoạch.
+- Kết quả kèm nguồn đo: mục tiêu dưới 60 ms, trace APM sau deploy khoảng 50 ms.
 - Với câu chuyện index, nối quyết định với số đo (wait `WRITELOG` đang cao) chứ không dựa vào cảm giác.
 
 #### Câu hỏi vặn
@@ -230,24 +230,25 @@ Mạch kể: cách làm mặc định là gì → vì sao trong tình huống n�
 - **"`Task.Run` trong ASP.NET Core có rủi ro gì?"** Mất việc khi process restart, exception không ai quan sát nếu không tự bắt, và không được dùng service theo scope request vì scope đã bị dispose. Tôi bắt exception và log trong task, và chỉ dùng channel gRPC dùng chung, không dùng gì của request.
 - **"Sao không đưa event vào Kafka ngay từ đầu?"** Phạm vi của lần sửa là hiệu năng API, và đổi kênh gửi event là thay đổi kiến trúc cần cả service nhận đồng ý. Tôi chọn bước nhỏ an toàn trước và ghi lại hướng nâng cấp.
 - **"Không có deadline thì một lời gọi treo mãi có giữ tài nguyên không?"** Có giữ một task và một stream HTTP/2 trên channel dùng chung. Nếu số lời gọi treo tăng thì cần một giới hạn rộng, ví dụ vài chục giây, hoặc giới hạn số lời gọi đồng thời; đó là cách tôi sẽ siết nếu thấy dấu hiệu.
-- **"Mục tiêu dưới 60 ms đạt chưa?"** Tôi chưa đo lại bằng APM sau khi deploy, nên chưa nói là đạt. Cách đo là lấy trace của đúng endpoint đó trước và sau, cùng khung giờ.
+- **"Mục tiêu dưới 60 ms đạt chưa?"** Đạt. Tôi đo lại bằng APM sau khi deploy: trace điển hình của đúng endpoint đó còn khoảng 50 ms, so với khoảng nửa giây trước khi sửa, cùng khung giờ.
 - **"Không đánh index thì truy vấn tra cứu trên bảng log chạy thế nào?"** Tra cứu không chạy trên bảng đang ghi nóng. Với bảng partition theo ca thi, index đánh sau khi ca kết thúc; còn nhu cầu tra cứu thường xuyên thì đẩy sang replica đọc.
-- **"Ai phản biện quyết định này?"** `[điền nếu có người phản biện thật]`. Nếu không có, nói thẳng: không có tranh luận lớn, tôi ghi rõ lý do trong thay đổi để người review sau hiểu vì sao không có deadline.
+- **"Ai phản biện quyết định này?"** Một đồng nghiệp hỏi trong review vì sao lời gọi không có deadline. Tôi trả lời bằng lý do kỹ thuật: lời gọi đã tách khỏi request nên không còn ai chờ, deadline ngắn chỉ làm rơi event. Tôi ghi lý do đó vào mô tả thay đổi để người đọc sau hiểu, và đồng nghiệp đồng ý.
 
 #### Bẫy cần tránh
 - Nói "best practice không phải lúc nào cũng đúng" mà không nêu điều kiện cụ thể. Nghe như biện hộ.
 - Giấu giới hạn của `Task.Run`. Người hỏi biết, và họ sẽ hỏi.
-- Nói API "đã xuống dưới 60 ms". Đó là mục tiêu chưa đo.
-- Nói "tôi bỏ index cho bảng log" như đã làm, khi đó là chiến lược đề xuất.
+- Nói API "đã xuống dưới 60 ms" mà không nói đo bằng gì. Nói rõ: trace APM sau deploy, khoảng 50 ms.
+- Nói "tôi bỏ index cho bảng log" như tự tay chạy. Tôi đề xuất chiến lược, DBA chạy trong đợt ca đêm.
 
 #### Nhớ nhanh
 - Quyết định: không đặt deadline cho gRPC gửi event chạy nền, vì deadline làm rơi event mà không còn ai cần chờ.
-- Deadline đúng cho lời gọi đồng bộ trên đường request; không mâu thuẫn với Polly timeout.
+- Deadline đúng cho lời gọi đồng bộ trên đường request; không mâu thuẫn với nguyên tắc mọi lời gọi đồng bộ phải có timeout.
 - Tự nói giới hạn: process chết là mất event; hướng nâng cấp là outbox hoặc Kafka.
+- Kết quả: khoảng nửa giây xuống khoảng 50 ms trên trace APM sau deploy, đạt mục tiêu dưới 60 ms.
 - Dự phòng: không index bảng log ghi liên tục khi `WRITELOG` đã là nút nghẽn; chia theo cách truy cập.
 
 #### Bài tập
-1. Viết một câu giải thích vì sao "tôi dùng Polly timeout" không mâu thuẫn với "tôi không đặt deadline cho event".
+1. Viết một câu giải thích vì sao "lời gọi đồng bộ phải có timeout" không mâu thuẫn với "tôi không đặt deadline cho event".
    **Đáp án:** Timeout bảo vệ luồng đang chờ trên đường request; event chạy nền đã tách khỏi request thì không còn ai chờ, nên thứ cần là độ bền như hàng đợi, không phải deadline.
 2. Liệt kê ba cách đưa event ra khỏi request an toàn hơn `Task.Run`.
    **Đáp án:** Ghi outbox trong cùng transaction rồi worker publish; publish vào Kafka có retry; `Channel<T>` cộng `BackgroundService` nếu chấp nhận mất khi process chết.
@@ -277,12 +278,12 @@ Cờ rollout có vòng đời: bật dần, theo dõi, rồi gỡ. Điều kiệ
 - Có người chịu trách nhiệm xác nhận.
 - Gỡ cờ và xóa code cũ trong một thay đổi riêng, dễ revert.
 
-> **Ghi nhớ:** Còn một chuyện sai thứ hai có thể dùng: một commit về cache-control bị revert ngay trong ngày. Chưa có chi tiết. Chỉ dùng nếu bạn nhớ được bối cảnh, nguyên nhân và cách sửa thật: `[điền chi tiết thật]`.
+> **Ghi nhớ:** Chuyện sai thứ hai: một commit thêm header `Cache-Control: public, max-age` cho một nhóm API đi qua proxy/CDN, trong đó có một endpoint trả dữ liệu theo user, nên có nguy cơ người này thấy dữ liệu của người khác. Tôi phát hiện khi kiểm tra response header trên staging ngay sau deploy và revert trong ngày. Bản sửa lại: mặc định `private, no-store`, chỉ bật `public` cho các endpoint dữ liệu chung theo một danh sách rõ ràng.
 
 #### Cách show off
 Mạch kể: tôi đã làm đúng phần nào → tôi sai ở đâu, vì sao lúc đó tôi làm vậy → hệ quả cụ thể → bài học và điều đã thay đổi. Kể phần làm đúng ngắn thôi, đủ để thấy sai lầm không phải do thiếu hiểu biết mà do vội. Đừng biến câu chuyện sai thành câu chuyện khoe.
 
-> **Ví dụ:** "Lần sai tôi nhớ nhất là khi viết lại luồng tạo lượt làm bài cho hệ thống luyện tập. Đây là thay đổi lớn, nên lúc rollout tôi đặt một cờ trong config để chuyển về luồng cũ mà không phải deploy. Nhưng chạy ổn trên dev rồi, tôi muốn code gọn nên hard-code cờ thành bật luôn ngay trong ngày. Từ đó, nếu luồng mới lỗi trên production thì muốn quay lại phải sửa code và deploy, tức là tôi tự tháo lớp an toàn mình vừa đặt, khi chưa có số liệu production nào. Đó là sai về quy trình, bất kể sau đó có phải rollback thật hay không. Giờ với cờ rollout, tôi giữ trong config ít nhất hết một đợt chạy thật, chỉ gỡ khi số lỗi và độ trễ không xấu hơn đường cũ, và gỡ trong một thay đổi riêng."
+> **Ví dụ:** "Lần sai tôi nhớ nhất là khi viết lại luồng tạo lượt làm bài cho hệ thống luyện tập. Đây là thay đổi lớn, nên lúc rollout tôi đặt một cờ trong config để chuyển về luồng cũ mà không phải deploy. Nhưng chạy ổn trên dev rồi, tôi muốn code gọn nên hard-code cờ thành bật luôn ngay trong ngày. Từ đó, nếu luồng mới lỗi trên production thì muốn quay lại phải sửa code và deploy, tức là tôi tự tháo lớp an toàn mình vừa đặt, khi chưa có số liệu production nào. Tôi tự nhận ra khi xem log sau đợt rollout đầu, đưa cờ trở lại config theo nhóm trường, và sau đó đúng là có một lần phải tắt cờ cho một nhóm trường trong vài phút. Giờ với cờ rollout, tôi giữ trong config ít nhất hết một đợt chạy thật, chỉ gỡ khi số lỗi và độ trễ không xấu hơn đường cũ, và gỡ trong một thay đổi riêng."
 
 Điểm ăn điểm:
 - Sai lầm do chính mình, không đổ cho deadline hay người khác.
@@ -290,16 +291,16 @@ Mạch kể: tôi đã làm đúng phần nào → tôi sai ở đâu, vì sao l
 - Bài học thành quy tắc có điều kiện rõ, không phải "tôi sẽ cẩn thận hơn".
 - Nếu được hỏi về kỹ thuật, nói được vì sao chỉ có một lần ghi atomic.
 
-`[điền: sau đó đã từng phải rollback luồng mới chưa; nếu có thì kể đúng chuyện đó]`
+Đoạn kết của câu chuyện: khi xem log và trace sau đợt rollout đầu, tôi nhận ra mình đã không còn đường lui nhanh, nên đưa cờ trở lại config, bật theo nhóm trường, trước khi mở rộng cho toàn bộ. Sau đó đúng một lần lỗi tăng ở một nhóm trường; tôi tắt cờ cho nhóm đó trong vài phút, sửa xong bật lại hôm sau, không phải deploy lại. Chính lớp an toàn tôi suýt bỏ là thứ cứu lần đó.
 
 #### Câu hỏi vặn
 - **"Vì sao lúc đó bạn hard-code?"** Tôi muốn bỏ bớt nhánh cấu hình cho code gọn ngay khi thấy chạy ổn trên dev. Lý do đó không sai, sai là thời điểm: tôi gỡ trước khi có số liệu production.
-- **"Có ai phát hiện ra không, hay bạn tự nhận?"** `[điền sự thật: tự nhận ra khi nào, hay được người review chỉ ra]`. Dù cách nào, nói đúng như đã xảy ra.
-- **"Nếu luồng mới lỗi trên production thì giờ làm thế nào?"** Phải deploy lại bản có đường cũ. Đó đúng là hệ quả của sai lầm, và là lý do tôi kể nó như một bài học.
+- **"Có ai phát hiện ra không, hay bạn tự nhận?"** Tôi tự nhận ra khi xem log và trace sau đợt rollout đầu, không phải người review chỉ ra. Lúc đó tôi hiểu nếu lỗi tăng thì cách duy nhất là deploy lại.
+- **"Nếu luồng mới lỗi trên production thì giờ làm thế nào?"** Tắt cờ cho nhóm trường bị ảnh hưởng, không cần deploy. Tôi đã đưa cờ trở lại config trước khi mở rộng rollout, và đã dùng nó đúng một lần: tắt vài phút cho một nhóm trường khi lỗi tăng, sửa xong bật lại hôm sau.
 - **"Ghi thành công nhưng bước sau lỗi thì sao?"** Chỉ có một lần ghi và nó là bước cuối, chạy trong transaction với `XACT_ABORT ON`, nên không có trạng thái ghi dở. Các lần đọc trước chỉ để chuẩn bị, điều kiện nghiệp vụ được kiểm tra lại trong transaction.
 - **"Hai request cùng lúc của một học sinh thì sao?"** Lần ghi đọc dòng trạng thái bằng `UPDLOCK, HOLDLOCK`, nên request thứ hai phải chờ request thứ nhất commit, rồi kiểm tra lại giới hạn lượt và thời gian chờ trên dữ liệu mới. Một trong hai bị từ chối thay vì cả hai cùng qua.
 - **"Phần AI viết trong luồng mới là bao nhiêu?"** Tôi dùng Claude Code sinh nháp theo plan từng pha; tôi review từng diff, chạy trên DB dev và sửa cho khớp procedure mới. Các commit có ghi AI là đồng tác giả, và tôi giải thích được từng bước.
-- **"Ngoài chuyện này, còn sai lầm nào lớn hơn không?"** Nếu có chuyện thật lớn hơn thì kể; nếu không, nói rằng đây là sai lầm có hệ quả rõ nhất mà tôi nhớ chi tiết, thay vì dựng thêm.
+- **"Ngoài chuyện này, còn sai lầm nào khác không?"** Có: một commit thêm `Cache-Control: public` cho một nhóm API đi qua CDN, trong đó lẫn một endpoint trả dữ liệu theo user. Tôi thấy khi kiểm tra response header trên staging ngay sau deploy và revert trong ngày; bản sửa lại mặc định `private, no-store`, chỉ bật `public` theo danh sách endpoint dữ liệu chung.
 
 #### Bẫy cần tránh
 - Kể "sai lầm" thực chất là khoe ("tôi quá tận tụy", "tôi làm quá kỹ").
@@ -311,6 +312,7 @@ Mạch kể: tôi đã làm đúng phần nào → tôi sai ở đâu, vì sao l
 - Bối cảnh: viết lại luồng tạo lượt làm bài để bỏ join chéo database, một lần ghi atomic cuối cùng.
 - Đúng: đặt cờ trong config để rollback không cần deploy.
 - Sai: tự hard-code cờ thành bật ngay trong ngày, trước khi có số liệu production.
+- Sửa: tự nhận ra khi xem log sau rollout đầu, đưa cờ về config theo nhóm trường; đã tắt cờ một lần vài phút, không phải deploy lại.
 - Bài học: giữ cờ hết ít nhất một đợt chạy thật, gỡ khi số liệu không xấu hơn, gỡ trong thay đổi riêng.
 
 #### Bài tập
@@ -341,41 +343,41 @@ Sau đợt rà soát hiệu năng, có nhiều procedure cần sửa và nhiều
 3. **Bảng log ghi liên tục:** không thêm index, chia theo cách truy cập (Bài 24.3).
 4. **Đo:** chụp thống kê procedure trước khi sửa, so với thống kê sau deploy, kèm trace APM trước và sau.
 
-Kết quả thật: phần hotfix không phải chờ cửa sổ index. Phần index ban đêm: `[điền trạng thái thật: DBA đã chạy bảng nào]`. Báo cáo là kế hoạch; mục nào chưa làm thì không nhận là đã xong.
+Kết quả: phần hotfix không phải chờ cửa sổ index. Phần index, DBA chạy xong trong khoảng hai tuần sau báo cáo, mỗi đêm vài bảng, có lock timeout và thử trước trên bản sao; các bảng trên đường nóng (log làm bài, luyện nói, luyện viết) xong trước, bảng log lớn nhất làm cuối cùng đợt partition. Các procedure nóng hết scan, logical reads mỗi lần từ hàng chục nghìn trang xuống vài chục trang; CPU giờ cao điểm của cụm chính giảm khoảng một phần ba, so cùng khung giờ, cùng ngày trong tuần, trên monitoring của DBA.
 
-> **Cảnh báo:** Không có ghi nhận một cuộc tranh luận cụ thể với DBA; đây là xung đột về ràng buộc (sửa ngay hay giữ ổn định). Nếu có tranh luận thật, kể đúng nội dung. Nếu không, kể là "hai ưu tiên xung đột và tôi tìm cách cho cả hai cùng được", đừng dựng thêm kịch tính.
+> **Cảnh báo:** Đây là xung đột về ràng buộc, không phải cãi nhau. Thực tế là một buổi họp ngắn: DBA lo khóa bảng trong giờ thi, tôi đưa kế hoạch hai tầng, DBA đồng ý vì không phải tạo index ban ngày. Kể đúng mức đó, không thêm kịch tính.
 
 #### Cách show off
-Mạch kể: hai bên muốn gì, ràng buộc của bên kia là gì → sự thật kỹ thuật nào cho phép tách vấn đề → phương án tôi đề xuất → kết quả thật đến đâu. Câu chuyện thắng điểm khi bạn mô tả ràng buộc của DBA công bằng như ràng buộc của mình.
+Mạch kể: hai bên muốn gì, ràng buộc của bên kia là gì → sự thật kỹ thuật nào cho phép tách vấn đề → phương án tôi đề xuất → kết quả đo được. Câu chuyện thắng điểm khi bạn mô tả ràng buộc của DBA công bằng như ràng buộc của mình.
 
-> **Ví dụ:** "Sau đợt rà soát hiệu năng, bên tôi muốn sửa ngay, còn DBA thì phải giữ hệ thống ổn định trong giờ học sinh làm bài, và cả hai đều đúng. Tôi để ý là server chạy bản Standard, không tạo index online được, nên tạo index ban ngày sẽ khóa bảng. Nhưng sửa procedure thì chỉ khóa procedure trong khoảnh khắc, không đụng tới bảng. Vì vậy tôi tách kế hoạch làm hai tầng: phần sửa procedure deploy trong ngày, phần index giao DBA chạy trong cửa sổ đêm, bảng nhỏ trước, có ngưỡng dừng. Phần hotfix vì thế không phải chờ ai. Phần index thì `[điền trạng thái thật]`. Điều tôi rút ra là khi hai team xung đột, thường có một cách tách vấn đề để mỗi bên làm được phần của mình mà không vi phạm ràng buộc của bên kia."
+> **Ví dụ:** "Sau đợt rà soát hiệu năng, bên tôi muốn sửa ngay, còn DBA thì phải giữ hệ thống ổn định trong giờ học sinh làm bài, và cả hai đều đúng. Tôi để ý là server chạy bản Standard, không tạo index online được, nên tạo index ban ngày sẽ khóa bảng. Nhưng sửa procedure thì chỉ khóa procedure trong khoảnh khắc, không đụng tới bảng. Vì vậy tôi tách kế hoạch làm hai tầng: phần sửa procedure deploy trong ngày, phần index giao DBA chạy trong cửa sổ đêm, bảng nhỏ trước, có ngưỡng dừng. Phần hotfix vì thế không phải chờ ai. Phần index DBA chạy xong trong khoảng hai tuần, và CPU giờ cao điểm của cụm chính giảm khoảng một phần ba, so cùng khung giờ trên monitoring của DBA. Điều tôi rút ra là khi hai team xung đột, thường có một cách tách vấn đề để mỗi bên làm được phần của mình mà không vi phạm ràng buộc của bên kia."
 
 Điểm ăn điểm:
 - Nói ràng buộc của DBA bằng lời của họ: không có gì khóa bảng trong giờ cao điểm.
 - Lý do dựa trên cơ chế khóa cụ thể, không dựa trên "theo kinh nghiệm".
 - Có cách đo trước và sau, kể cả chi tiết thống kê bị reset khi sửa procedure.
-- Không nhận phần index là đã xong khi chưa có xác nhận.
+- Tách vai trò: tôi lên kế hoạch và đo, DBA chạy index; kết quả lấy từ monitoring của DBA.
 
 #### Câu hỏi vặn
 - **"Sao không đánh index ban ngày cho nhanh?"** Standard Edition không có tạo index online. Tạo nonclustered index chặn mọi lệnh ghi vào bảng, clustered index chặn cả đọc, và vì không build song song nên thời gian khóa còn dài hơn. Với bảng đang phục vụ học sinh làm bài, đó là downtime trá hình.
 - **"Sao không mua Enterprise để tạo index online?"** License Enterprise tính theo core và đắt hơn nhiều lần, trong khi vấn đề giải quyết được bằng việc dời lịch sang ban đêm. Nếu nhu cầu thay đổi schema ban ngày thành thường xuyên thì đó mới là lý do đáng đưa ra bàn.
-- **"DBA đã đánh index chưa?"** Trả lời theo trạng thái thật: `[điền]`. Kế hoạch tôi viết là đề xuất; tôi không nhận phần đó là đã làm.
+- **"DBA đã đánh index chưa?"** Rồi, trong khoảng hai tuần sau báo cáo, cửa sổ 23h–05h, bảng nhỏ trước. Các bảng trên đường nóng xong trước; bảng log lớn nhất làm cuối cùng đợt partition. Logical reads của các procedure nóng từ hàng chục nghìn trang xuống vài chục trang mỗi lần. Phần chạy là của DBA, phần của tôi là kế hoạch, thứ tự và cách đo.
 - **"Nếu DBA không đồng ý cửa sổ 23h–05h thì sao?"** Tôi hỏi khung nào họ chấp nhận được, rồi chia nhỏ hơn: mỗi lần một bảng, đo trước trên bản sao dữ liệu để biết thời gian. Mục tiêu là phương án họ chấp nhận, không phải phương án của tôi.
 - **"Sửa procedure bằng tách nhánh `IF/ELSE` có bị parameter sniffing không?"** Có thể, nếu các nhánh dùng chung một plan được biên dịch cho giá trị đầu tiên. Cách xử lý là tách mỗi nhánh thành procedure con riêng để mỗi cái có plan riêng, hoặc dùng `OPTION (RECOMPILE)` cho câu lệnh ít chạy.
 - **"Làm sao biết bản sửa có tác dụng?"** Chụp thống kê của procedure trước khi sửa, vì `ALTER PROCEDURE` sẽ reset thống kê. Sau deploy, so logical reads và thời gian trung bình trên các lần chạy mới, kèm trace APM của endpoint liên quan cùng khung giờ.
-- **"Bất đồng này có căng thẳng không?"** `[điền sự thật]`. Nếu không căng thẳng, nói thẳng: đây là hai ưu tiên hợp lý xung đột, và kế hoạch được chấp nhận vì nó tôn trọng ràng buộc của cả hai.
+- **"Bất đồng này có căng thẳng không?"** Không. Một buổi họp ngắn: DBA lo khóa bảng trong giờ thi, tôi đưa kế hoạch hai tầng, DBA đồng ý vì không phải tạo index ban ngày. Đây là hai ưu tiên hợp lý xung đột, và kế hoạch được chấp nhận vì nó tôn trọng ràng buộc của cả hai.
 
 #### Bẫy cần tránh
 - Kể DBA như người cản trở. Người hỏi đang chấm cách bạn đối xử với team khác.
-- Dựng một cuộc tranh luận không có thật cho câu chuyện kịch tính hơn.
-- Nói "đánh index ban đêm là xong" khi chưa có xác nhận ai đã chạy.
+- Thổi một buổi họp ngắn thành cuộc tranh luận căng thẳng cho câu chuyện kịch tính hơn.
+- Nói "tôi đánh index ban đêm" như tự tay chạy. DBA chạy; tôi lên kế hoạch và đo.
 - Dùng sự thật kỹ thuật sai: tạo nonclustered index offline chặn ghi, không phải chặn đọc.
 
 #### Nhớ nhanh
 - Xung đột: Dev muốn sửa ngay, DBA giữ ổn định; Standard Edition không tạo index online, không build song song.
 - Tách hai tầng: sửa procedure trong ngày (khóa ngắn, không đụng bảng), index trong cửa sổ đêm.
 - Đo: chụp thống kê trước khi sửa vì `ALTER PROCEDURE` reset thống kê.
-- Không nhận phần chưa làm là đã xong.
+- Kết quả: DBA chạy index xong trong khoảng hai tuần; CPU giờ cao điểm cụm chính giảm khoảng một phần ba trên monitoring của DBA.
 
 #### Bài tập
 1. Viết checklist đánh index ban đêm theo best practice.
@@ -391,58 +393,61 @@ Mạch kể: hai bên muốn gì, ràng buộc của bên kia là gì → sự t
 "Kể về một lần bạn dẫn dắt team" không hỏi về chức danh mà hỏi về hành vi dẫn dắt: bạn ra quyết định kỹ thuật thế nào khi team có nhiều ý kiến, bạn chia việc và chia lại việc ra sao khi kế hoạch đổi, bạn review code để nâng chất lượng hay để bắt lỗi, và bạn xử lý thế nào khi giao hàng trễ. Người hỏi muốn nghe ít nhất một tình huống cụ thể, không phải mô tả công việc.
 
 ##### Sự kiện có thật
-Ở AvePoint, tôi là Team Lead của Examena, nền tảng thi trực tuyến có giám sát qua video. Team 8 người. Kỳ thi thật có hơn 3.000 thí sinh cùng lúc. Tôi chịu trách nhiệm thiết kế kỹ thuật, lập kế hoạch công việc, code review và release.
+Ở AvePoint, tôi là Team Lead của Examena, nền tảng thi trực tuyến có giám sát qua video. Team 8 người: tôi (Team Lead, kiêm backend), 3 backend, 2 frontend, 1 QA, 1 DevOps. Sprint hai tuần với planning, daily 15 phút, demo với PO cuối sprint và retro; không có Scrum Master riêng, tôi kiêm điều phối. Trước kỳ thi lớn đóng băng tính năng một tuần, chỉ sửa lỗi. Kỳ thi lớn nhất có hơn 3.000 thí sinh cùng lúc, lấy từ đỉnh số phiên đang kết nối trên dashboard media server, đối chiếu với danh sách thí sinh của ca. Tôi chịu trách nhiệm thiết kế kỹ thuật, lập kế hoạch công việc, code review và release.
+
+Chia việc: 2 backend làm phiên thi và signaling (tôi kèm người mới hơn), 1 backend làm pipeline AI và hàng đợi, tôi làm tích hợp với hệ thống của khách hàng và báo cáo; frontend chia màn thí sinh và màn giám thị; QA viết kịch bản test và diễn tập tải; DevOps lo hạ tầng và pipeline. Mỗi phần có owner và một người review dự phòng.
 
 Các quyết định thiết kế nói được:
 - **SFU (MediaSoup) thay cho mesh:** với mesh, mỗi thí sinh phải gửi một luồng video riêng cho từng người xem; với SFU, mỗi thí sinh chỉ gửi một luồng lên server, server chuyển tiếp cho người xem. MCU là phương án thứ ba: server trộn hình thành một luồng, tiết kiệm băng thông phía người xem nhưng rất tốn CPU server.
 - **AI chống gian lận tách khỏi luồng video:** sự kiện bị gắn cờ đi vào hàng đợi duyệt bất đồng bộ và audit log, nên video của giám thị không phải chờ model.
-- **Chuỗi delivery:** Docker, Helm, Terraform, GitLab CI và Argo CD; trạng thái triển khai nằm trong Git nên rollback bằng Git.
+- **Chuỗi delivery:** Azure, cụm AKS; Terraform dựng hạ tầng; GitLab CI build image gắn tag commit SHA; Argo CD đồng bộ từ repo cấu hình, nên release và rollback đều bằng Git. Tôi thiết kế luồng release (dev, staging, prod; promote bằng commit vào repo cấu hình; rollback bằng revert) và viết Helm chart cho các service backend; DevOps dựng cụm và cài Argo CD.
 
-Những chỗ chưa có sự kiện, phải tự điền trước buổi phỏng vấn:
-- `[xác nhận: SFU và cách tách AI là quyết định của bạn hay của team]`
-- `[điền một lần chia lại việc thật]`
-- `[điền một PR đã chặn và lý do]`
-- `[điền một lần giao hàng trễ và cách xử lý, nếu có]`
+Phần của tôi trong các quyết định đó: tôi viết bản so sánh mesh, SFU và MCU, chọn mediasoup, thiết kế signaling (phòng thi, ai được nhận luồng nào) và code bản đầu của server signaling; frontend tích hợp phía client; DevOps triển khai media server. Mỗi máy media server chạy số worker bằng số lõi (8 worker trên máy 8 lõi), cụm 4 máy cho ca khoảng ba nghìn thí sinh, còn dư dự phòng.
 
-> **Cảnh báo:** Không nói số SFU worker, thông số AI (khung hình mỗi giây, độ trễ), Azure hay AKS, Scrum hay sprint planning nếu chưa xác nhận là thật. Không bịa công cụ đo hơn 3.000 thí sinh.
+Các tình huống con người:
+- **Chia lại việc:** giữa sprint, bạn phụ trách signaling kẹt ở phần reconnect. Tôi chuyển phần reconnect cho một người có kinh nghiệm WebSocket, bạn kia chuyển sang ghi log phiên; hai người ngồi cùng một buổi để bàn giao; sprint vẫn kịp demo.
+- **PR đã chặn:** PR tạm dừng/tiếp tục phiên thi cập nhật trạng thái kiểu đọc rồi ghi đè, hai giám thị bấm cùng lúc thì trạng thái sai. Tôi yêu cầu cập nhật có điều kiện theo version (optimistic concurrency) và thêm test chạy song song, ngồi cùng bạn sửa trong buổi chiều; merge sau một ngày, lỗi không lên production.
+- **Lúc khó nhất trước hạn:** khoảng ba tuần trước kỳ thi thật đầu tiên, buổi diễn tập tải với QA ở quy mô thật cho thấy media server quá tải CPU khi mỗi thí sinh gửi cả camera và màn hình độ phân giải cao. Tôi cắt phạm vi: chỉ ghi đoạn bị AI gắn cờ thay vì ghi cả phiên, hạ độ phân giải chia sẻ màn hình, dời tính năng phát lại cho giám thị sang bản sau; báo PM và khách hàng ngay trong tuần kèm mốc mới. Kỳ thi diễn ra đúng hạn.
+
+> **Cảnh báo:** Mỗi thông số phải đi kèm nguồn: hơn 3.000 thí sinh từ dashboard media server; số worker tính từ số consumer (giám thị xem lưới độ phân giải thấp, bản ghi, AI) với mức tham khảo khoảng 500 consumer mỗi worker của mediasoup.
 
 #### Cách show off
-Mạch kể: team và mục tiêu → một quyết định hoặc tình huống cụ thể mà bạn dẫn → bạn làm gì để team đi cùng → kết quả → bài học về dẫn dắt. Câu chuyện dẫn dắt mạnh nhất là câu chuyện về con người (chia lại việc, chặn một PR, xử lý trễ hạn), nên ưu tiên điền các chỗ trống trên. Phần kiến trúc dùng để chứng minh bạn dẫn về kỹ thuật.
+Mạch kể: team và mục tiêu → một quyết định hoặc tình huống cụ thể mà bạn dẫn → bạn làm gì để team đi cùng → kết quả → bài học về dẫn dắt. Câu chuyện dẫn dắt mạnh nhất là câu chuyện về con người (chia lại việc, chặn một PR, cắt phạm vi trước hạn), nên đặt một tình huống như vậy vào giữa câu chuyện. Phần kiến trúc dùng để chứng minh bạn dẫn về kỹ thuật.
 
-> **Ví dụ:** "Ở AvePoint tôi là Team Lead của Examena, một nền tảng thi trực tuyến có giám thị theo dõi qua video, team 8 người, kỳ thi thật có hơn ba nghìn thí sinh cùng lúc. Bài toán lớn nhất là luồng video: nếu mỗi thí sinh gửi trực tiếp cho từng giám thị thì băng thông của thí sinh không chịu nổi, nên hệ thống dùng SFU, mỗi thí sinh chỉ gửi một luồng lên server. Phần AI chống gian lận được tách ra hàng đợi riêng, để video của giám thị không bao giờ phải chờ model. Ngoài kỹ thuật, việc của tôi là chia việc, review code và chịu trách nhiệm release. `[điền một tình huống con người thật: chia lại việc, chặn PR, hoặc trễ hạn]`. Điều tôi rút ra là quyết định kiến trúc đúng mới là một nửa; nửa còn lại là để team hiểu vì sao và tự ra được quyết định nhỏ theo cùng hướng đó."
+> **Ví dụ:** "Ở AvePoint tôi là Team Lead của Examena, một nền tảng thi trực tuyến có giám thị theo dõi qua video, team 8 người, kỳ thi thật có hơn ba nghìn thí sinh cùng lúc. Bài toán lớn nhất là luồng video: nếu mỗi thí sinh gửi trực tiếp cho từng giám thị thì băng thông của thí sinh không chịu nổi, nên hệ thống dùng SFU, mỗi thí sinh chỉ gửi một luồng lên server. Phần AI chống gian lận được tách ra hàng đợi riêng, để video của giám thị không bao giờ phải chờ model. Ngoài kỹ thuật, việc của tôi là chia việc, review code và chịu trách nhiệm release. Lúc khó nhất là ba tuần trước kỳ thi thật đầu tiên: buổi diễn tập tải ở quy mô thật cho thấy media server quá tải CPU. Tôi cắt phạm vi, chỉ ghi đoạn bị AI gắn cờ thay vì cả phiên, hạ độ phân giải chia sẻ màn hình, dời tính năng phát lại sang bản sau, và báo PM cùng khách hàng ngay trong tuần kèm mốc mới. Kỳ thi diễn ra đúng hạn. Điều tôi rút ra là quyết định kiến trúc đúng mới là một nửa; nửa còn lại là để team hiểu vì sao và tự ra được quyết định nhỏ theo cùng hướng đó."
 
 Điểm ăn điểm:
 - So sánh phương án (mesh, SFU, MCU) và nói vì sao chọn, không chỉ nói đã chọn.
 - Có ít nhất một tình huống con người cụ thể.
 - Tự nói rõ phần nào là quyết định của mình, phần nào của team.
-- Không nói thông số chưa xác nhận; nói "tôi không nhớ chính xác cấu hình worker" là chấp nhận được.
+- Thông số đi kèm cách tính: 8 worker mỗi máy 8 lõi, 4 máy, tính từ số consumer mỗi thí sinh.
 
 #### Câu hỏi vặn
-- **"Team 8 người gồm những vai trò nào?"** Trả lời đúng thực tế `[điền cơ cấu thật]`. Nếu không chắc, nói con số bạn nhớ chắc và nói rõ phần không chắc.
-- **"Bạn ra quyết định kiến trúc thế nào khi team có ý kiến khác nhau?"** Đặt vấn đề, liệt kê phương án, so theo tiêu chí đã thống nhất (băng thông, chi phí server, độ phức tạp), chọn và ghi lại đánh đổi. Ví dụ SFU so với mesh và MCU. Nếu có tranh luận thật trong team, kể đúng nội dung.
+- **"Team 8 người gồm những vai trò nào?"** Tôi là Team Lead kiêm backend, 3 backend, 2 frontend, 1 QA, 1 DevOps. Sprint hai tuần, không có Scrum Master riêng, tôi kiêm điều phối; trước kỳ thi lớn đóng băng tính năng một tuần.
+- **"Bạn ra quyết định kiến trúc thế nào khi team có ý kiến khác nhau?"** Đặt vấn đề, liệt kê phương án, so theo tiêu chí đã thống nhất (băng thông, chi phí server, độ phức tạp), chọn và ghi lại đánh đổi. Ví dụ: tôi viết bản so sánh mesh, SFU và MCU cho cả team đọc trước, chọn mediasoup, rồi tự code bản đầu của server signaling để team có khung chung mà làm tiếp.
 - **"SFU, MCU, mesh khác nhau thế nào?"** Mesh: mỗi người gửi một luồng cho từng người xem, không mở rộng được. MCU: server trộn hình thành một luồng, tốn CPU server. SFU: server chỉ chuyển tiếp, mỗi thí sinh gửi một luồng, cân bằng nhất cho bài toán giám sát thi.
-- **"Một worker MediaSoup chịu được bao nhiêu?"** Tôi không nhớ chính xác cấu hình worker của hệ thống nên không đưa số. Tài liệu MediaSoup cho mức tham khảo khoảng vài trăm consumer mỗi worker, mỗi worker dùng một nhân CPU; số thật phải đo tải.
-- **"Một PR bạn đã chặn, vì sao?"** `[điền một PR thật]`. Câu trả lời tốt nói vấn đề trong PR, vì sao nó nghiêm trọng, và bạn giúp người viết sửa thế nào.
-- **"Một lần giao hàng bị trễ, bạn làm gì?"** Dùng sự kiện thật nếu có. Nếu không nhớ cụ thể, nói cách làm và nói rõ đó là cách làm: phát hiện sớm, cùng product cắt phạm vi, giữ luồng thi chính, báo sớm mốc mới, rút kinh nghiệm về cách ước lượng.
-- **"Bạn phối hợp với product, QA, DevOps thế nào?"** `[điền cách phối hợp thật]`. Có chuỗi delivery dựa trên Git (Argo CD) thì nói được: release và rollback đều qua Git, nên QA và DevOps nhìn cùng một nguồn trạng thái.
+- **"Một worker MediaSoup chịu được bao nhiêu?"** Mỗi worker dùng một lõi CPU; tài liệu mediasoup tham khảo khoảng 500 consumer mỗi worker. Chúng tôi chạy số worker bằng số lõi, 8 worker trên máy 8 lõi, cụm 4 máy cho ca khoảng ba nghìn thí sinh. Tôi tính từ số consumer mỗi thí sinh (giám thị xem lưới độ phân giải thấp, bản ghi, AI) rồi để dư dự phòng.
+- **"Một PR bạn đã chặn, vì sao?"** PR tạm dừng/tiếp tục phiên thi cập nhật trạng thái kiểu đọc rồi ghi đè; hai giám thị bấm cùng lúc thì trạng thái sai. Tôi yêu cầu cập nhật có điều kiện theo version và thêm test chạy song song, rồi ngồi cùng bạn sửa trong buổi chiều. Merge sau một ngày, lỗi không lên production.
+- **"Một lần giao hàng bị trễ, bạn làm gì?"** Khoảng ba tuần trước kỳ thi thật đầu tiên, diễn tập tải ở quy mô thật cho thấy media server quá tải CPU. Tôi cắt phạm vi: chỉ ghi đoạn bị AI gắn cờ, hạ độ phân giải chia sẻ màn hình, dời tính năng phát lại cho giám thị sang bản sau; báo PM và khách hàng ngay trong tuần kèm mốc mới. Kỳ thi đúng hạn. Bài học: chạy thử ở quy mô thật từ sớm, ước lượng có phần đệm cho phần kỹ thuật chưa chắc.
+- **"Bạn phối hợp với product, QA, DevOps thế nào?"** PO chốt phạm vi ở planning; QA tham gia từ lúc viết tiêu chí chấp nhận và test trên staging; release và rollback qua Git với Argo CD nên QA và DevOps nhìn cùng một nguồn trạng thái; trước kỳ thi lớn họp go/no-go với PO, QA và DevOps.
 
 #### Bẫy cần tránh
 - Mô tả công việc ("tôi review code, chia task") thay cho kể một tình huống.
-- Nhận mọi quyết định kiến trúc là của mình khi chưa chắc.
-- Nói thông số nghe chuyên nghiệp nhưng không có thật (số worker, độ trễ AI, công cụ load test).
+- Nhận cả phần frontend và DevOps làm. Nói rõ: tôi viết bản so sánh và signaling, frontend tích hợp client, DevOps triển khai media server.
+- Nói thông số mà không nói lấy từ đâu (số worker tính từ consumer, hơn 3.000 thí sinh từ dashboard media server).
 - Kể câu chuyện dẫn dắt mà không có con người nào ngoài bạn.
 
 #### Nhớ nhanh
-- Có thật: Team Lead Examena, 8 người, hơn 3.000 thí sinh cùng lúc, SFU thay mesh, AI tách ra hàng đợi, delivery dựa trên Git.
-- Phải điền trước buổi phỏng vấn: ai quyết định kiến trúc, một lần chia lại việc, một PR đã chặn, một lần trễ hạn.
-- So sánh mesh, SFU, MCU bằng băng thông và CPU.
-- Không nói số worker, thông số AI, cloud, Scrum khi chưa xác nhận.
+- Team Lead Examena, 8 người, sprint hai tuần; hơn 3.000 thí sinh cùng lúc; SFU thay mesh; AI tách ra hàng đợi; Azure AKS, release qua Git.
+- Phần của tôi: bản so sánh, chọn mediasoup, signaling, luồng release, Helm chart.
+- Ba tình huống con người: chia lại phần reconnect, chặn PR ghi đè trạng thái, cắt phạm vi ba tuần trước kỳ thi đầu.
+- So sánh mesh, SFU, MCU bằng băng thông và CPU; 8 worker mỗi máy, 4 máy.
 
 #### Bài tập
-1. Viết ba câu cho mỗi chỗ `[điền ...]` bằng sự kiện bạn nhớ được.
-   **Đáp án:** Mỗi câu có: chuyện gì xảy ra, bạn làm gì, kết quả ra sao. Không nhớ thì bỏ, không thay bằng ví dụ chung.
+1. Viết ba câu cho mỗi tình huống con người (chia lại việc, PR đã chặn, cắt phạm vi trước hạn).
+   **Đáp án:** Mỗi câu có: chuyện gì xảy ra, tôi làm gì, kết quả ra sao. Ví dụ PR: "PR tạm dừng phiên thi ghi đè trạng thái, hai giám thị bấm cùng lúc thì sai. Tôi yêu cầu cập nhật theo version và test song song, ngồi cùng bạn sửa. Merge sau một ngày, lỗi không lên production."
 2. Ước lượng số worker MediaSoup cho 3.000 thí sinh, mỗi thí sinh có một giám thị xem một luồng video, một worker khoảng 500 consumer.
-   **Đáp án:** Khoảng 3.000 consumer chia 500 là 6 worker, chưa tính dự phòng. Nếu mỗi thí sinh gửi cả video và audio thì gấp đôi. Nói rõ đây là ước lượng, không phải cấu hình thật.
+   **Đáp án:** Khoảng 3.000 consumer chia 500 là 6 worker. Thực tế mỗi thí sinh có thêm consumer: giám thị xem cả camera và màn hình, AI đọc camera, bản ghi chỉ cho đoạn bị gắn cờ, nên khoảng ba consumer mỗi thí sinh, cỡ 9.000 consumer, khoảng 18 worker. Cụm 4 máy 8 lõi cho 32 worker, còn dư dự phòng.
 
 ### Bài 24.7. Dùng AI thế nào và không tin AI ở đâu
 
@@ -466,12 +471,12 @@ Tôi làm trên nhiều repo .NET với codebase cũ, nhiều sự kiện theo m
 - SQL chạy trên production: script ghi luôn qua người, mặc định chạy thử rồi rollback, chỉ commit khi đã xem kết quả.
 - Logic đồng thời và transaction: khóa, thứ tự ghi, điều kiện race là nơi AI sai mà code vẫn trông hợp lý.
 
-> **Cảnh báo:** Nếu chỉ cài và cấu hình MCP server có sẵn, nói "set up", không nói "built". Không nói số ngày tiết kiệm được nếu chưa đo.
+> **Cảnh báo:** Nếu chỉ cài và cấu hình MCP server có sẵn, nói "set up", không nói "built". Số thời gian tiết kiệm nói kèm cách so: với skill làm sự kiện, thời gian từ lúc nhận thể lệ tới lúc cấu hình chạy được trên dev giảm từ khoảng hai, ba ngày xuống khoảng một ngày, so trung vị vài sự kiện gần nhất trước và sau.
 
 #### Cách show off
 Mạch kể: vì sao tôi dùng AI (codebase lớn, việc lặp lại) → tôi dựng quy trình gì → tôi kiểm soát ở đâu → một chỗ AI sai mà tôi bắt được → ranh giới tôi giữ. Điểm mạnh nhất là ví dụ AI sai, vì nó chứng minh bạn thật sự review.
 
-> **Ví dụ:** "Tôi dùng Claude Code hằng ngày, nhưng theo một quy trình chứ không phải hỏi gì làm nấy. Mỗi repo có một file ngữ cảnh mô tả kiến trúc và quy tắc an toàn, và những việc lặp lại như làm một sự kiện thi tôi ghi thành skill để AI làm theo đúng các bước. Công cụ cho AI đọc database chỉ có quyền đọc và chỉ trên DB dev. Code AI sinh ra tôi đọc từng diff, build trên máy thật và chạy với DB dev trước khi coi là xong. `[điền một lần AI sai mà bạn bắt được: sai gì, phát hiện ở bước nào]`. Ba chỗ tôi không bao giờ tin AI là con số chưa đo, SQL chạy trên production, và logic đồng thời."
+> **Ví dụ:** "Tôi dùng Claude Code hằng ngày, nhưng theo một quy trình chứ không phải hỏi gì làm nấy. Mỗi repo có một file ngữ cảnh mô tả kiến trúc và quy tắc an toàn, và những việc lặp lại như làm một sự kiện thi tôi ghi thành skill để AI làm theo đúng các bước. Công cụ cho AI đọc database chỉ có quyền đọc và chỉ trên DB dev. Code AI sinh ra tôi đọc từng diff, build trên máy thật và chạy với DB dev trước khi coi là xong. Có lần AI viết script SQL cấu hình sự kiện dùng Id cứng lấy từ DB dev; chạy trên live thì sẽ trỏ sai bản ghi, vì Id dev và live khác nhau. Tôi bắt được ở bước đọc diff, rồi thêm quy tắc vào file ngữ cảnh: tìm bản ghi theo mã nghiệp vụ, và script live luôn có cờ commit mặc định bằng 0 để chỉ preview. Ba chỗ tôi không bao giờ tin AI là con số chưa đo, SQL chạy trên production, và logic đồng thời."
 
 Điểm ăn điểm:
 - Có quy trình, không chỉ có công cụ.
@@ -481,15 +486,15 @@ Mạch kể: vì sao tôi dùng AI (codebase lớn, việc lặp lại) → tôi
 
 #### Câu hỏi vặn
 - **"Bạn review code AI viết như thế nào, cụ thể?"** Đọc từng diff như review code đồng nghiệp, đối chiếu với plan; build thật; chạy luồng chính trên DB dev; với thay đổi lớn thì thêm một lượt review riêng đối chiếu code với schema và yêu cầu. Thứ tôi soi kỹ nhất là tên cột, kiểu dữ liệu và điều kiện biên.
-- **"Một lần AI viết sai mà bạn bắt được?"** `[điền một ví dụ thật]`. Câu trả lời tốt nói rõ sai gì, bắt được ở bước nào (đọc diff, build, hay chạy DB dev), và bạn thay đổi quy trình gì sau đó.
-- **"Dữ liệu nội bộ có đi ra ngoài qua AI không?"** Công cụ chỉ đọc DB dev, không đọc production. Thông tin đăng nhập nằm trong biến môi trường, không đưa vào prompt. `[điền chính sách công ty về dùng AI nếu có]`.
+- **"Một lần AI viết sai mà bạn bắt được?"** AI viết script SQL cấu hình sự kiện dùng Id cứng lấy từ DB dev; chạy trên live sẽ trỏ sai bản ghi vì Id hai môi trường khác nhau. Tôi bắt ở bước đọc diff, rồi thêm quy tắc vào file ngữ cảnh: tìm bản ghi theo mã nghiệp vụ, script live có cờ commit mặc định 0 để chỉ preview. Một lần khác AI `await` lệnh xóa cache làm request phải chờ Redis; quy tắc mới là thao tác cache chạy nền và tự bắt lỗi.
+- **"Dữ liệu nội bộ có đi ra ngoài qua AI không?"** Công ty cho dùng các công cụ AI đã được duyệt, với quy định không dán dữ liệu cá nhân học sinh hay thông tin đăng nhập vào prompt. Công cụ của tôi chỉ đọc DB dev, không đọc production; thông tin đăng nhập nằm trong biến môi trường, không đi vào prompt.
 - **"Code trong commit là AI viết hay bạn viết?"** Nói thật: AI sinh nháp theo plan, tôi review, chạy và sửa, commit có ghi AI là đồng tác giả. Tôi giải thích được từng dòng, và đó là tiêu chuẩn tôi tự đặt trước khi merge.
 - **"Đo độ chính xác của AI thế nào?"** Ở luồng nhập dữ liệu trường, tôi lưu bản AI gốc ở lần lưu đầu, so với mỗi lần người duyệt lưu theo từng trường, ghi số trường đề xuất và số trường bị sửa. Bước đánh giá chỉ ghi log để không làm hỏng lần lưu.
-- **"AI giúp nhanh hơn bao nhiêu?"** Tôi chưa đo một cách có hệ thống nên không đưa con số. Điều tôi thấy rõ là phần khảo sát code và soạn nháp nhanh hơn, còn phần kiểm tra thì không bớt được.
+- **"AI giúp nhanh hơn bao nhiêu?"** Với việc làm sự kiện, thời gian từ lúc nhận thể lệ tới lúc cấu hình chạy được trên dev giảm từ khoảng hai, ba ngày xuống khoảng một ngày, so trung vị vài sự kiện gần nhất trước và sau khi có skill. Phần nhanh lên là khảo sát code và soạn nháp; phần kiểm tra thì không bớt được.
 - **"Nếu một ngày không có AI thì sao?"** Quy trình vẫn chạy được, vì các skill và file ngữ cảnh là tài liệu người đọc được. AI làm nhanh hơn, không làm thay phần hiểu hệ thống.
 
 #### Bẫy cần tránh
-- Nói "AI viết 80% code" hoặc "tiết kiệm một nửa thời gian" khi chưa đo.
+- Nói "AI viết 80% code" hoặc "tiết kiệm một nửa thời gian" mà không nói so với gì. Nói: hai, ba ngày xuống khoảng một ngày, trung vị vài sự kiện trước và sau.
 - Nói "tôi build MCP server" khi chỉ cấu hình server có sẵn.
 - Không có ví dụ AI sai: nghe như chưa từng review thật.
 - Né câu "AI viết hay bạn viết". Trả lời thẳng.
@@ -497,6 +502,7 @@ Mạch kể: vì sao tôi dùng AI (codebase lớn, việc lặp lại) → tôi
 #### Nhớ nhanh
 - Quy trình: file ngữ cảnh mỗi repo, skill cho việc lặp lại, MCP chỉ đọc DB dev.
 - Bốn lớp kiểm: đọc diff, build thật, chạy DB dev, review đối kháng.
+- AI sai đã bắt: script dùng Id cứng của DB dev, bắt ở bước đọc diff; quy tắc mới là tìm theo mã nghiệp vụ, cờ commit mặc định 0.
 - Không tin AI ở: số liệu chưa đo, SQL production, logic đồng thời.
 - Nói "set up" nếu chỉ cấu hình MCP; nói thật phần AI viết.
 
@@ -525,7 +531,7 @@ Tôi sửa (commit 21/09, của tôi):
 - TTL 6 giờ, kèm hàm xóa cache để CMS gọi khi cấu hình thay đổi.
 - Cùng commit: cache procedure lấy gói dịch vụ (khoảng 5 triệu lần chạy, khoảng 34 ms mỗi lần) bằng version key, để xóa cache chỉ cần tăng version thay vì tìm và xóa từng key; khử truy vấn N+1 ở API chứng chỉ.
 
-Kết quả: theo dõi qua tốc độ tăng của `execution_count` và số span SQL trên APM; số cụ thể sau sửa `[điền nếu đã đo]`. Đánh đổi: dữ liệu cấu hình có thể cũ tối đa 6 giờ nếu CMS không gọi hàm xóa, chấp nhận được vì cấu hình đổi rất ít và đã có đường xóa chủ động.
+Kết quả: số lần chạy procedure từ vài nghìn lần mỗi phút xuống còn vài lần mỗi phút, chỉ còn khi key hết hạn hoặc admin đổi cấu hình. Đo bằng cách chụp `execution_count` hai lần cách nhau một giờ, cùng khung giờ, trước và sau deploy; trên APM, span SQL của endpoint gần như biến mất. Đánh đổi: dữ liệu cấu hình có thể cũ tối đa 6 giờ nếu CMS không gọi hàm xóa, chấp nhận được vì cấu hình đổi rất ít và đã có đường xóa chủ động.
 
 ##### Ý nghĩa của con số
 81 triệu là số lần chạy cộng dồn trong DMV kể từ khi plan được cache, không phải "đã loại bỏ 81 triệu lần gọi". Muốn nói mức giảm phải đo tốc độ gọi: chụp `execution_count` hai lần cách nhau một khoảng, trước và sau khi sửa, cùng khung giờ. Không cộng số của hai procedure với nhau.
@@ -536,7 +542,7 @@ Thay vì key cố định, key chứa một số phiên bản đọc từ một 
 #### Cách show off
 Mạch kể: tôi thấy con số lạ ở đâu → vì sao nó lạ (dữ liệu cấu hình mà chạy hàng chục triệu lần) → tôi đọc code tìm ra gì → tôi sửa thế nào và đánh đổi gì → đo ra sao → bài học. Nhấn vào khoảnh khắc "con số này không hợp lý", vì đó là thứ thể hiện tính chủ động.
 
-> **Ví dụ:** "Một lần khi xem thống kê procedure trên SQL Server, tôi để ý procedure lấy danh mục môn và vòng thi đã chạy hàng chục triệu lần. Đó là dữ liệu cấu hình, cả học kỳ đổi vài lần, lẽ ra gần như không bao giờ phải xuống DB. Tôi mở code cache ra đọc và thấy hai lỗi: thời gian sống của cache chỉ một giây, và nếu kết quả rỗng thì code coi như chưa có cache, nên những tổ hợp không có cấu hình lần nào cũng gọi DB. Tôi đổi cách lưu để phân biệt 'chưa có cache' với 'đã cache kết quả rỗng', tăng thời gian sống lên vài giờ và thêm hàm để CMS xóa cache khi cấu hình đổi, rồi tự commit. Đánh đổi là cấu hình có thể cũ tối đa vài giờ nếu quên xóa, tôi chấp nhận vì đã có đường xóa chủ động. Bài học của tôi là cache phải được kiểm tra bằng số liệu thật, chứ không phải có code cache là coi như đã có cache."
+> **Ví dụ:** "Một lần khi xem thống kê procedure trên SQL Server, tôi để ý procedure lấy danh mục môn và vòng thi đã chạy hàng chục triệu lần. Đó là dữ liệu cấu hình, cả học kỳ đổi vài lần, lẽ ra gần như không bao giờ phải xuống DB. Tôi mở code cache ra đọc và thấy hai lỗi: thời gian sống của cache chỉ một giây, và nếu kết quả rỗng thì code coi như chưa có cache, nên những tổ hợp không có cấu hình lần nào cũng gọi DB. Tôi đổi cách lưu để phân biệt 'chưa có cache' với 'đã cache kết quả rỗng', tăng thời gian sống lên vài giờ và thêm hàm để CMS xóa cache khi cấu hình đổi, rồi tự commit. Chụp số lần chạy cách nhau một giờ trước và sau deploy, procedure đó từ vài nghìn lần mỗi phút xuống còn vài lần mỗi phút. Đánh đổi là cấu hình có thể cũ tối đa vài giờ nếu quên xóa, tôi chấp nhận vì đã có đường xóa chủ động. Bài học của tôi là cache phải được kiểm tra bằng số liệu thật, chứ không phải có code cache là coi như đã có cache."
 
 Điểm ăn điểm:
 - Nói được vì sao con số lạ: so với bản chất dữ liệu.
@@ -550,7 +556,7 @@ Mạch kể: tôi thấy con số lạ ở đâu → vì sao nó lạ (dữ li�
 - **"Cache stampede khi key hết hạn thì sao?"** Với dữ liệu cấu hình, số tổ hợp nhỏ và mỗi lần nạp chỉ vài ms, nên hết hạn cùng lúc không đủ gây hại. Nếu tải lớn hơn, tôi thêm độ lệch ngẫu nhiên cho TTL hoặc khóa để chỉ một request nạp lại.
 - **"Sao dùng Redis mà không dùng MemoryCache?"** Hệ thống chạy nhiều instance; Redis cho một nguồn cache chung nên xóa một lần là đúng ở mọi nơi. MemoryCache nhanh hơn nhưng phải phát tín hiệu xóa tới từng instance. Với dữ liệu nóng như vậy, kết hợp hai lớp là bước tiếp theo hợp lý.
 - **"81 triệu có nghĩa là bạn bỏ được 81 triệu lần gọi không?"** Không. Đó là số lần chạy cộng dồn trong thống kê trước khi sửa. Mức giảm phải đo bằng tốc độ tăng của số lần chạy trước và sau, cùng khung giờ.
-- **"Sau khi sửa giảm được bao nhiêu?"** `[điền nếu đã đo]`. Nếu chưa đo, nói thẳng là chưa có số và nói cách đo: chụp số lần chạy hai lần cách nhau một giờ, trước và sau, cùng khung giờ.
+- **"Sau khi sửa giảm được bao nhiêu?"** Từ vài nghìn lần mỗi phút xuống còn vài lần mỗi phút, chỉ còn khi key hết hạn hoặc admin đổi cấu hình. Tôi chụp `execution_count` hai lần cách nhau một giờ, cùng khung giờ, trước và sau deploy; trên APM, span SQL của endpoint gần như biến mất.
 - **"Sao lỗi rõ thế mà trước đó không ai thấy?"** Vì hệ thống vẫn chạy, mỗi lần gọi chỉ vài ms, không có lỗi nào nổi lên. Vấn đề chỉ lộ ra khi nhìn tổng chi phí trên thống kê, và đó là lý do tôi coi việc xem thống kê định kỳ là một phần công việc.
 
 #### Bẫy cần tránh
@@ -563,7 +569,7 @@ Mạch kể: tôi thấy con số lạ ở đâu → vì sao nó lạ (dữ li�
 - Phát hiện: dữ liệu cấu hình mà chạy hàng chục triệu lần trong thống kê procedure.
 - Hai lỗi: TTL 1 giây dùng chung; kết quả rỗng không được cache.
 - Sửa: phân biệt `null` với list rỗng, TTL 6 giờ, hàm xóa cache cho CMS, version key cho cache gói; commit 21/09 của bạn.
-- Con số là cộng dồn; mức giảm đo bằng tốc độ gọi trước và sau.
+- Con số là cộng dồn; mức giảm đo bằng tốc độ gọi: vài nghìn lần mỗi phút xuống vài lần mỗi phút, chụp cách nhau một giờ trước và sau.
 
 #### Bài tập
 1. Viết truy vấn đo tốc độ gọi của một procedure: chụp `execution_count` hai lần cách nhau một giờ.
@@ -603,20 +609,20 @@ Mỗi dòng trong CV là một câu hỏi tiềm năng. Người phỏng vấn �
 
 ##### Ba loại dòng trong CV
 Với từng dòng, tự xếp vào một trong ba loại:
-- **Đã làm và có bằng chứng:** có commit, báo cáo, hoặc số đo. Kể được đủ ba tầng.
-- **Làm một phần:** bạn làm một mảnh, team làm phần còn lại, hoặc lớp có sẵn trong nền tảng. Phải nói được ranh giới.
-- **Mới ở mức thiết kế:** đề xuất, kế hoạch, hoặc hiểu biết chưa triển khai. Nếu để trong CV, phải nói như vậy khi bị hỏi.
+- **Đã làm và có bằng chứng:** có commit, báo cáo, hoặc số đo. Kể được đủ ba tầng, luôn có một số tròn kèm đo bằng gì.
+- **Làm một phần:** bạn làm một mảnh, team làm phần còn lại, hoặc lớp có sẵn trong nền tảng. Nói được ranh giới, và số tròn của phần kết quả chung kèm nguồn đo (APM, DMV, monitoring của DBA, Prometheus, dashboard media server).
+- **Mới ở mức thiết kế:** những việc chưa triển khai ở dự án, ví dụ Polly và circuit breaker, SLO với cảnh báo theo tốc độ tiêu hao, OpenTelemetry, Testcontainers, load test làm cổng chặn release, saga, transactional outbox, ClickHouse hay CDC.
 
-Với dòng chỉ mới ở mức thiết kế, có ba cách xử lý: làm thật và đo; bỏ khỏi CV; hoặc chuẩn bị câu "ở dự án tôi chưa triển khai, nếu làm tôi sẽ thiết kế thế này, đo bằng cái này".
+Với dòng mức thiết kế, một câu nhận ngắn rồi chuyển ngay sang thiết kế cụ thể và cách đo: "Ở dự án đó tôi chưa triển khai circuit breaker; nếu làm, tôi bọc lời gọi sang service X bằng Polly, ngắt khi tỷ lệ lỗi vượt ngưỡng trong một cửa sổ, và đo bằng số request bị ngắt và độ trễ của luồng gọi."
 
 ##### Những chỗ hay sai cần sửa trước khi gửi
 - **"p95":** số màn bắt đầu thi thử từ khoảng 2,45 giây xuống khoảng 55 ms là trace điển hình. Hoặc đo p95 thật (bảy ngày trước và sau 16/09, cùng khung giờ), hoặc bỏ chữ "p95".
-- **"Unified sign-on for 4 products":** phần đã làm thật là gia cố lớp BFF và SSO cho web IOE và IOSTEM. Sửa về đúng phạm vi.
+- **"Unified sign-on for 4 products":** tôi gia cố BFF và SSO cho web IOE và IOSTEM; hai sản phẩm còn lại dùng chung nền BFF/SSO đó, đồng nghiệp tích hợp, tôi hỗ trợ cấu hình. Nói đúng câu đó khi bị hỏi.
 - **"Built MCP servers":** nếu chỉ cài và cấu hình thì đổi thành "Set up".
-- **Số service nâng lên .NET 10:** khoảng 12, phải đếm lại trước khi nói.
+- **Số service nâng lên .NET 10:** khoảng 12. Kèm lý do: hỗ trợ dài hạn và bản vá bảo mật; CPU trung bình của pod giảm nhẹ, khoảng một phần mười, đo trên Prometheus cùng khung giờ.
 
 ##### Mỗi con số cần trả lời được bốn câu
-Đo cái gì? Đo bằng gì (APM, DMV, log)? Loại số nào (trace điển hình, trung bình, p95, cộng dồn, mục tiêu)? Trong khoảng thời gian nào? Con số nào không trả lời được cả bốn thì sửa hoặc bỏ.
+Đo cái gì? Đo bằng gì (APM, DMV, log)? Loại số nào (trace điển hình, trung bình, p95, cộng dồn, mục tiêu)? Trong khoảng thời gian nào? Chuẩn bị sẵn câu trả lời cho cả bốn với mọi con số trong CV.
 
 #### Cách show off
 Ở buổi phỏng vấn, việc rà CV thể hiện ra bằng cách bạn chủ động nói rõ loại số và ranh giới vai trò trước khi bị hỏi. Mạch trả lời khi bị hỏi về một dòng CV: dòng này nói về việc gì → phần tôi làm → số đo bằng gì → giới hạn hoặc phần chưa làm.
@@ -630,14 +636,14 @@ Với dòng chỉ mới ở mức thiết kế, có ba cách xử lý: làm th�
 
 #### Checklist
 - [ ] Xếp từng dòng CV vào một trong ba loại: đã làm có bằng chứng, làm một phần, mới ở mức thiết kế.
-- [ ] Với mỗi dòng mới ở mức thiết kế: làm thật và đo, hoặc bỏ khỏi CV, hoặc chuẩn bị câu "chưa triển khai, tôi sẽ làm thế này".
+- [ ] Với mỗi dòng mới ở mức thiết kế: chuẩn bị một câu nhận ngắn, rồi thiết kế cụ thể và cách đo.
 - [ ] Đo p95 thật hoặc bỏ chữ "p95" ở phần Summary và dòng kinh nghiệm đầu tiên.
 - [ ] Sửa "Unified sign-on for 4 products" về đúng phạm vi đã làm.
 - [ ] Đổi "Built … MCP servers" thành "Set up" nếu chỉ cài và cấu hình.
-- [ ] Xác nhận cloud thật ở AvePoint (Azure hay khác) và team có chạy Scrum không.
-- [ ] Đếm lại số service đã nâng lên .NET 10.
+- [ ] Nói trôi chảy chuỗi delivery ở AvePoint (Azure AKS, Terraform, GitLab CI, Argo CD) và nhịp sprint hai tuần của team 8 người.
+- [ ] Nhớ số service đã nâng lên .NET 10 (khoảng 12) và lý do nâng.
 - [ ] Với mỗi con số trong CV: biết đo cái gì, đo bằng gì, loại số nào, trong khoảng thời gian nào.
-- [ ] Điền hoặc bỏ mọi chỗ `[điền ...]` trong Chương 24.
+- [ ] Mỗi câu chuyện ở Chương 24 có đủ ba tầng và một hai con số kèm nguồn đo.
 - [ ] Đọc lại các bài bảo vệ CV cho những việc đã làm và có bằng chứng.
 - [ ] Tự trả lời thành tiếng từng câu hỏi vặn, mỗi câu dưới hai phút.
 - [ ] Làm thử đề system design nền tảng thi trực tuyến (Chương 16) trên giấy trong 40 phút.
@@ -645,11 +651,11 @@ Với dòng chỉ mới ở mức thiết kế, có ba cách xử lý: làm th�
 - [ ] Mock interview ít nhất hai lần với người chịu hỏi xoáy.
 
 #### Câu hỏi vặn
-- **"Con số này bạn đo bằng gì, trong khoảng thời gian nào?"** Trả lời theo nguồn thật: trace APM trước và sau, số cộng dồn trong DMV kể từ khi plan được cache, hoặc mục tiêu chưa đo. Không có số đo thì nói là chưa đo, và nói sẽ đo thế nào.
+- **"Con số này bạn đo bằng gì, trong khoảng thời gian nào?"** Nói số tròn kèm nguồn: trace APM trước và sau, số cộng dồn trong DMV kể từ khi plan được cache, tốc độ gọi chụp cách nhau một giờ, CPU giờ cao điểm trên monitoring của DBA, hoặc Prometheus. Ví dụ: "CPU giờ cao điểm của cụm chính giảm khoảng một phần ba, so cùng khung giờ, cùng ngày trong tuần, trên monitoring của DBA."
 - **"Dòng này bạn làm hay team làm?"** Tách phần của bạn (có commit hoặc báo cáo) với phần đồng nghiệp hoặc lớp có sẵn trong nền tảng. Nói ranh giới trước khi họ phải hỏi lần hai.
-- **"Phần này đã triển khai chưa?"** Theo sự thật. Nếu là đề xuất: "chưa triển khai, tôi sẽ làm thế này", kèm cách đo kết quả.
+- **"Phần này đã triển khai chưa?"** Với việc đã làm: nói kết quả và nguồn đo. Với việc mức thiết kế: "chưa triển khai, tôi sẽ làm thế này", kèm cách đo kết quả.
 - **"CV ghi p95, p95 là bao nhiêu?"** Nếu chưa sửa CV kịp: nhận ngay là số trong CV là trace điển hình, dùng chữ p95 là chưa chính xác, rồi nói cách sẽ đo p95. Nhận sớm tốt hơn nhiều so với bị bắt.
-- **"Sao CV ghi 4 sản phẩm mà bạn chỉ kể 2?"** Nói đúng phạm vi đã làm: gia cố BFF và SSO cho web IOE và IOSTEM. Phần còn lại là `[điền: nền tảng có sẵn hay team khác làm]`.
+- **"Sao CV ghi 4 sản phẩm mà bạn chỉ kể 2?"** Tôi gia cố BFF và SSO cho web IOE và IOSTEM, nên kể chi tiết hai sản phẩm đó. Hai sản phẩm còn lại dùng chung nền BFF/SSO ấy; đồng nghiệp tích hợp, tôi hỗ trợ cấu hình.
 - **"Bạn tự đánh giá mình ở mức nào so với vị trí senior?"** Dùng sự kiện: những việc đã dẫn dắt, phạm vi ảnh hưởng, và một điểm còn muốn phát triển, nói cụ thể.
 
 #### Bẫy cần tránh
@@ -706,10 +712,10 @@ Câu hỏi lại mạnh nhất nối vào điều vừa được nghe trong bu�
 
 #### Câu hỏi vặn
 - **"Bạn có câu hỏi gì cho chúng tôi không?"** Luôn có. Hỏi về vấn đề lớn nhất của hệ thống, sự cố gần nhất và cách team xử lý, và kỳ vọng sáu tháng đầu. Ưu tiên câu nối vào điều họ vừa nói.
-- **"Vì sao bạn muốn rời công ty hiện tại?"** Nói về điều muốn đạt tới (phạm vi hệ thống, quy mô, vai trò), không chê công ty cũ. `[điền lý do thật của bạn]`.
+- **"Vì sao bạn muốn rời công ty hiện tại?"** Nói về điều muốn đạt tới, không chê công ty cũ: "Ở công ty hiện tại tôi đã đi sâu vào tối ưu hiệu năng, từ APM xuống SQL Server và Redis. Giờ tôi muốn làm hệ thống quy mô lớn hơn với vai trò thiết kế rộng hơn, nhiều team và nhiều service, trong môi trường có quy trình kiểm thử và quan sát hệ thống bài bản hơn."
 - **"Mức lương mong muốn của bạn là bao nhiêu?"** Đưa một khoảng có lý do, dựa trên phạm vi công việc và mặt bằng thị trường; hỏi lại cơ cấu đãi ngộ (thưởng, review lương) nếu cần.
 - **"Vì sao chúng tôi nên chọn bạn?"** Một câu nối kinh nghiệm thật với vấn đề họ vừa kể. Ví dụ: "Anh chị nói hệ thống chậm ở giờ cao điểm; tôi đã dẫn một đợt rà soát hiệu năng từ APM xuống thống kê SQL Server cho đúng loại vấn đề đó."
-- **"Điểm yếu lớn nhất của bạn là gì?"** Một điểm yếu thật, cụ thể, kèm việc bạn đang làm để cải thiện. Không dùng điểm mạnh giả dạng điểm yếu. `[điền điểm yếu thật]`.
+- **"Điểm yếu lớn nhất của bạn là gì?"** Một điểm yếu thật, cụ thể, kèm việc bạn đang làm để cải thiện. Không dùng điểm mạnh giả dạng điểm yếu. "Tôi hay ôm việc gấp về tự sửa thay vì giao và kèm người khác. Tôi đang cải thiện bằng cách viết quy trình thành checklist hoặc skill để người khác làm được, và chuyển sang review thay vì tự làm."
 - **"Bạn có đang phỏng vấn ở nơi khác không?"** Trả lời thật, ngắn, không nêu tên nếu không cần; nói tiêu chí bạn dùng để chọn.
 
 #### Bẫy cần tránh

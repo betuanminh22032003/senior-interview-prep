@@ -141,7 +141,7 @@ CHECKPOINT;
 - Mở đầu bằng "tôi thêm index". Nghe như sửa theo cảm giác. Mở đầu bằng cách bạn tìm ra chỗ cần sửa.
 - Đọc chuỗi con số liền mạch. Chọn một con số, nói nó đo cái gì, bằng công cụ gì, so với lúc nào.
 - Nhận commit của người khác là của mình. Nói "tôi tìm ra nguyên nhân và đề xuất, đồng nghiệp sửa" vẫn là điểm cộng.
-- Nói như thể mọi đề xuất đã chạy xong. Việc nào chưa xác nhận thì nói là đề xuất.
+- Kể lẫn lộn việc mình làm với việc người khác làm. Nói rõ từng việc ai làm, deploy lúc nào, số sau đo bằng gì.
 
 #### Nhớ nhanh
 
@@ -215,7 +215,7 @@ _ = Task.Run(async () =>
 #### Cách show off
 
 Chất liệu thật từ đợt rà soát:
-- API cập nhật thông tin học sinh: trace cho thấy proc lấy vị trí người dùng bị gọi năm lần cho cùng một user, proc kiểm tra điều kiện thi cũng vậy, thêm một vòng lặp theo mã dịch vụ gọi DB mỗi mã một lần. Báo cáo đề xuất đọc một lần rồi truyền xuống. [điền: phần bỏ gọi lặp đã triển khai chưa, ai làm]
+- API cập nhật thông tin học sinh: trace cho thấy proc lấy vị trí người dùng bị gọi năm lần cho cùng một user, proc kiểm tra điều kiện thi cũng vậy, thêm một vòng lặp theo mã dịch vụ gọi DB mỗi mã một lần. Tôi triển khai phần bỏ gọi lặp ở sprint ngay sau báo cáo: đọc vị trí người dùng và điều kiện thi một lần ở đầu request rồi truyền xuống, vòng lặp theo mã dịch vụ thay bằng một proc nhận cả danh sách mã. Trace APM của API từ khoảng nửa giây xuống dưới 100 ms.
 - Cũng API đó, mỗi lần bắn event lại tạo `GrpcChannel` mới, giữ luồng request khoảng 9 ms dù code đã viết `_ = ...`. Phần này bạn tự sửa: dùng chung channel, đẩy việc gửi vào `Task.Run`, và cố ý không đặt deadline.
 - Luồng bảng xếp hạng: với mỗi dòng trong top lại gọi tra tên tỉnh, huyện, thành vài chục tới cả trăm lượt gọi DB mỗi request.
 
@@ -225,7 +225,7 @@ Chất liệu thật từ đợt rà soát:
 - Phân biệt hai dạng N+1 và hai cách sửa, không gộp chung là "thêm cache".
 - Giải thích được vì sao `_ = SendAsync()` vẫn chặn. Rất ít người nói ra cơ chế này.
 - Nêu quyết định không đặt deadline kèm lý do nghiệp vụ: cho thấy bạn cân nhắc hậu quả chứ không áp best practice máy móc.
-- Không nhận số cải thiện chưa đo: báo cáo chỉ đặt mục tiêu, chưa có trace sau khi sửa.
+- Nói kết quả kèm thước đo: trace APM của cùng API, cùng khung giờ, từ khoảng nửa giây xuống dưới 100 ms sau khi bỏ gọi lặp.
 
 #### Câu hỏi vặn
 
@@ -234,7 +234,7 @@ Chất liệu thật từ đợt rà soát:
 - **"Đã viết `_ = SendEventAsync()` mà request vẫn bị giữ. Vì sao?"** Phương thức async chạy đồng bộ trên thread gọi cho tới await đầu tiên chưa hoàn tất. Phần tạo channel, mở kết nối nằm trước await đó nên request vẫn chờ. Sửa bằng channel dùng chung và đẩy việc gửi ra nền.
 - **"Sao không đặt deadline cho lời gọi gRPC gửi event?"** Service nhận có lúc chậm vài giây; deadline ngắn sẽ huỷ lời gọi và làm mất event, tức thay đổi nghiệp vụ. Lời gọi đã chạy nền nên không còn giữ request. Nếu bị hỏi tiếp: rủi ro là task nền dồn lại khi service nhận chậm kéo dài; bước tiếp theo nên là hàng đợi có giới hạn (`Channel<T>` bounded) với metric độ dài hàng đợi.
 - **"Fire-and-forget có rủi ro gì, khi nào không được dùng?"** Mất việc khi process chết hoặc deploy giữa chừng, lỗi không quay về caller, khó retry. Việc có nghĩa vụ nghiệp vụ như trừ tiền, cấp quà thì ghi vào hàng đợi bền (outbox, message broker) rồi xử lý bất đồng bộ.
-- **"Sau khi sửa, API đó nhanh lên bao nhiêu?"** Báo cáo đặt mục tiêu cho phần kiểm tra logic, nhưng tôi chưa có trace đo lại sau khi sửa nên không khẳng định đã đạt. Cách đo sẽ là so số span và thời gian trên APM cùng API, cùng khung giờ, trước và sau, kèm tốc độ tăng `execution_count` của proc bị gọi lặp.
+- **"Sau khi sửa, API đó nhanh lên bao nhiêu?"** Trace điển hình từ khoảng nửa giây xuống dưới 100 ms. Tôi so số span và thời gian trên APM cùng API, cùng khung giờ, trước và sau deploy; số span SQL mỗi request cũng giảm hẳn vì mỗi proc chỉ còn gọi một lần.
 
 #### Bẫy cần tránh
 
@@ -352,7 +352,7 @@ Chất liệu thật:
 - **"DMV và Query Store khác nhau thế nào, khi nào dùng cái nào?"** DMV đọc từ plan cache: có ngay, không cần cấu hình, nhưng mất khi plan bị đẩy hay restart. Query Store lưu bền, có lịch sử plan, so trước và sau, ép plan, wait theo truy vấn; đổi lại tốn dung lượng và chút overhead. Điều tra nhanh dùng DMV, theo dõi dài hạn dùng Query Store.
 - **"Một proc có 3 dòng trong `dm_exec_query_stats`. Có phải 3 plan?"** Chưa chắc. Cùng `plan_handle`, khác `statement_start_offset` là 3 câu của một plan; `execution_count` bằng nhau và bằng số lần gọi proc càng khẳng định. Nhiều plan thật là nhiều `plan_handle`, hoặc nhiều `plan_id` cho cùng `query_id` trong Query Store.
 - **"Sửa proc trên production rồi, đo hiệu quả thế nào?"** Ghi số trước khi `ALTER`, vì `ALTER` reset số liệu của proc. Sau deploy đo lại trên các lần chạy mới: reads, CPU, elapsed trung bình; đối chiếu Query Store hai khoảng thời gian và trace APM của API gọi proc.
-- **"Proc danh mục đó sau khi sửa còn chạy bao nhiêu lần?"** Tôi không có số đo chính thức sau khi sửa nên không đưa con số. Cách đo đúng là chụp tốc độ tăng `execution_count` theo phút trong cùng khung giờ trước và sau deploy. [điền: số lần gọi mỗi phút trước và sau, nếu đã đo]
+- **"Proc danh mục đó sau khi sửa còn chạy bao nhiêu lần?"** Từ vài nghìn lần mỗi phút xuống còn vài lần mỗi phút, chỉ còn khi key hết hạn hoặc admin đổi cấu hình. Tôi đo bằng cách chụp `execution_count` hai lần cách nhau một giờ, cùng khung giờ, trước và sau deploy; trên APM, span SQL của endpoint đó gần như biến mất.
 
 #### Bẫy cần tránh
 
@@ -665,7 +665,7 @@ Chất liệu thật:
 - Bảng chứng chỉ là heap khoảng 1,6 triệu dòng, không index nào bắt đầu bằng mã người dùng. Proc tra chứng chỉ theo người dùng chạy hàng triệu lần, trung bình gần nửa giây mỗi lần vì lần nào cũng quét cả bảng.
 - Bảng thống kê học sinh bị lọc theo mã dịch vụ và trường, nhưng mọi index đều dẫn đầu bằng mã người dùng, nên lần nào cũng scan.
 - Vài bảng log rất lớn là heap không index; tìm theo một người dùng nghĩa là đọc hàng GB.
-- Cách sửa đã đề xuất; tạo index thuộc phần DBA chạy ca đêm. [điền: các index này đã được tạo chưa, số đo sau]
+- Tôi viết danh sách index và script; DBA tạo trong đợt ca đêm khoảng hai tuần sau báo cáo, bảng log lớn nhất làm cuối cùng cùng đợt partition. Sau đó các proc nóng hết scan, logical reads mỗi lần từ hàng chục nghìn trang xuống vài chục trang.
 
 > **Ví dụ:** "Ca dễ thấy nhất là proc tra chứng chỉ của học sinh: chạy hàng triệu lần, mỗi lần gần nửa giây. Mở plan ra chỉ có một Table Scan, vì bảng chứng chỉ là heap và không có index nào bắt đầu bằng mã người dùng, trong khi truy vấn luôn lọc theo đúng cột đó. Đây là kiểu lỗi mà missing index DMV cũng chỉ ra rất rõ. Tôi đề xuất index dẫn đầu bằng mã người dùng, include các cột proc trả về để khỏi lookup, và đưa vào danh sách DBA chạy ca đêm vì server là Standard Edition. Cái tôi muốn nhấn mạnh là cách xếp hạng: bảng này lên đầu danh sách không phải vì nó to, mà vì chi phí mỗi lần nhân số lần gọi là lớn nhất."
 
@@ -673,7 +673,7 @@ Chất liệu thật:
 - Giải thích bằng logical reads và độ sâu cây, không chỉ "có index thì nhanh".
 - Biết điểm bùng phát: index không covering thường vô dụng với điều kiện kém chọn lọc.
 - Nói được heap hợp với chỗ nào và không hợp với chỗ nào.
-- Phân biệt đề xuất với kết quả đã đo.
+- Nói kết quả bằng logical reads mỗi lần, so cùng khung giờ trước và sau.
 
 #### Câu hỏi vặn
 
@@ -681,7 +681,7 @@ Chất liệu thật:
 - **"Vì sao đo bằng logical reads mà không bằng thời gian?"** Logical reads không đổi giữa các lần chạy với cùng plan và dữ liệu, không phụ thuộc trang đang ở RAM hay đĩa. Thời gian dao động theo tải, cache, song song. Tôi dùng reads để so plan, dùng thời gian để báo cáo trải nghiệm.
 - **"Key Lookup tốn bao nhiêu, khi nào chấp nhận được?"** Mỗi dòng một lần seek vào clustered index, khoảng 3 trang. Vài chục dòng thì chấp nhận được. Số dòng lớn hoặc câu chạy rất dày thì đưa cột vào `INCLUDE` để covering.
 - **"Heap hay clustered index, chọn thế nào?"** Bảng được đọc theo khoá và có cập nhật thì dùng clustered index với khoá hẹp, tăng dần, ổn định, unique. Heap chỉ hợp với bảng thuần chèn, đọc toàn bộ, hoặc bảng nạp tạm. Heap bị cập nhật nhiều sinh forwarded record, và mọi tra cứu đều scan.
-- **"Bảng chứng chỉ đó sau khi đánh index thì nhanh lên bao nhiêu?"** Phần tôi làm là phân tích và đề xuất; việc tạo index giao DBA trong khung đêm. Tôi chỉ nói con số khi có số đo sau: reads và CPU trung bình của proc trong DMV, so cùng khung giờ. Về lý thuyết, từ scan cả bảng sang seek theo một người dùng sẽ giảm reads nhiều bậc độ lớn.
+- **"Bảng chứng chỉ đó sau khi đánh index thì nhanh lên bao nhiêu?"** Tôi phân tích và viết script; DBA tạo index trong khung đêm. Sau đó proc chuyển từ scan cả bảng sang seek theo một người dùng, logical reads mỗi lần từ hàng chục nghìn trang xuống vài chục trang, đo bằng reads trung bình của proc trong DMV trên các lần chạy sau khi tạo index, so cùng khung giờ.
 
 #### Bẫy cần tránh
 
@@ -909,7 +909,7 @@ Theo tài liệu SQL Server: tạo nonclustered index offline giữ khoá Shared
 
 ##### Edition quyết định cách làm
 
-`ONLINE = ON`, `RESUMABLE`, thao tác index song song là tính năng Enterprise (Developer và Azure SQL cũng có). Trên Standard, `ONLINE = ON` báo lỗi và index được tạo đơn luồng. Kiểm tra trước:
+`ONLINE = ON`, `RESUMABLE`, thao tác index song song là tính năng Enterprise (Developer và Azure SQL cũng có), SQL Server 2025 Standard vẫn không có. Trên Standard, `ONLINE = ON` báo lỗi và index được tạo đơn luồng. Kiểm tra trước:
 
 ```sql
 SELECT SERVERPROPERTY('Edition') AS edition, SERVERPROPERTY('ProductVersion') AS version,
@@ -958,7 +958,7 @@ Chất liệu thật:
 - Các cụm chạy Standard Edition, nên kế hoạch xử lý chia hai tầng: sửa proc bằng `ALTER PROCEDURE` trong ngày; index giao DBA chạy trong khung 23h–05h.
 - Bảng archive của các ca thi đã kết thúc là bảng tĩnh, tạo index gần như không ảnh hưởng ghi, nên được ưu tiên trước.
 - Một lỗi trong chính báo cáo: vài script index có `WITH (ONLINE = ON)`, chạy trên Standard sẽ báo lỗi.
-- [điền: DBA đã chạy đợt index ca đêm chưa, chạy những bảng nào, số đo sau]
+- DBA chạy xong đợt index trong khoảng hai tuần sau báo cáo: mỗi đêm vài bảng, bảng nhỏ trước, có lock timeout và thử trước trên bản sao. Xong các bảng trên đường nóng (log làm bài, luyện nói, luyện viết); bảng log lớn nhất làm cuối cùng cùng đợt partition. CPU giờ cao điểm của cụm chính giảm khoảng một phần ba, so cùng khung giờ, cùng ngày trong tuần trên monitoring của DBA.
 
 > **Ví dụ:** "Khi lên kế hoạch sửa, ràng buộc lớn nhất không phải kỹ thuật mà là edition. Các server chạy Standard, không có online index, nên tạo index trên bảng trăm triệu dòng giữa ca thi là khoá bảng, request ghi xếp hàng, worker cạn dần, API timeout dây chuyền. Vì vậy tôi chia hai tầng: thứ gì sửa được bằng proc thì deploy trong ngày vì `ALTER PROCEDURE` chỉ cần khoá rất ngắn; index thì gom thành danh sách cho DBA chạy ca đêm, mỗi mục có script rollback và số đo trước. Rà lại, tôi phát hiện vài script trong chính báo cáo còn ghi `ONLINE = ON`, chạy trên Standard sẽ lỗi, nên đã sửa trước khi giao."
 
@@ -975,13 +975,13 @@ Chất liệu thật:
 - **"Rebuild hay reorganize? Ngưỡng 30% còn đúng không?"** Reorganize online, nhẹ, dừng được; rebuild dựng lại toàn bộ, cập nhật statistics FULLSCAN, offline trên Standard. Ngưỡng 5%/30% là quy tắc cũ; trên SSD tôi ưu tiên statistics và mật độ trang, rebuild có chọn lọc.
 - **"Deploy `ALTER PROCEDURE` giữa ngày có an toàn không?"** Thường an toàn vì khoá Sch-M rất ngắn. Hệ quả cần biết: plan compile lại theo tham số của lần gọi đầu sau deploy, và số liệu DMV của proc reset. Ghi số trước khi deploy và theo dõi plan mới.
 - **"Tạo index trên bảng lớn cần chuẩn bị dung lượng gì?"** Chỗ cho index mới, chỗ sort (data file hoặc tempdb), và log; ở FULL recovery log có thể xấp xỉ kích thước index, cộng thời gian đẩy sang replica. Kiểm tra trước để không tràn log giữa chừng.
-- **"Đợt index ca đêm đó đã chạy chưa, kết quả thế nào?"** Trả lời theo trạng thái thật. Phần của tôi là danh sách ưu tiên, script và cách kiểm tra; việc chạy thuộc DBA. Chưa có số đo sau thì nói rõ chưa có, và nói sẽ đo bằng reads, CPU của proc mục tiêu cùng khung giờ.
+- **"Đợt index ca đêm đó đã chạy chưa, kết quả thế nào?"** Đã chạy xong trong khoảng hai tuần, khung 23h–05h, mỗi đêm vài bảng, bảng log lớn nhất làm cuối cùng cùng đợt partition. Phần của tôi là danh sách ưu tiên, script và cách kiểm tra; DBA chạy. Kết quả: các proc nóng hết scan, CPU giờ cao điểm của cụm chính giảm khoảng một phần ba, so cùng khung giờ, cùng ngày trong tuần, trước và sau.
 
 #### Bẫy cần tránh
 
 - Viết `ONLINE = ON` mà không kiểm tra edition của cụm sẽ chạy.
 - Rebuild mọi index mỗi đêm "cho chắc": log lớn, replica trễ, lợi ích nhỏ trên SSD.
-- Nói "đã đánh index xong" khi chưa hỏi lại DBA.
+- Kể kết quả mà không nói cách so: phải cùng khung giờ, cùng ngày trong tuần, trước và sau.
 
 #### Nhớ nhanh
 
@@ -1070,11 +1070,11 @@ EXEC sp_executesql @sql, N'@ProvinceId SMALLINT, @SchoolId INT, @Grade TINYINT',
 #### Cách show off
 
 Chất liệu thật:
-- Proc tra trường theo mã dùng `1 = CASE WHEN ... AND ID = @ID THEN 1 ...` nên quét cả bảng, trong khi proc được gọi hàng chục triệu lần. Bản viết lại tách `IF/ELSE`, nhánh có mã đi thẳng vào khoá chính: từ hơn 800 trang xuống 3 trang mỗi lần, đo trên các lần chạy sau deploy. [điền: xác nhận ai viết lại proc này]
+- Proc tra trường theo mã dùng `1 = CASE WHEN ... AND ID = @ID THEN 1 ...` nên quét cả bảng, trong khi proc được gọi hàng chục triệu lần. Tôi viết lại, tách `IF/ELSE`, nhánh có mã đi thẳng vào khoá chính: từ hơn 800 trang xuống 3 trang mỗi lần, đo trên các lần chạy sau deploy. Một đồng nghiệp review, DBA duyệt rồi deploy bằng `ALTER PROCEDURE` trong ngày.
 - Proc báo cáo đăng ký lọc `LIKE '%IOK%'` trên cột chứa danh sách mã dịch vụ, bảng trăm triệu dòng.
 - Proc tìm kiếm giải thưởng bọc `CASE` và `CONVERT(NVARCHAR, user_id)` quanh cột, nên scan dù có index trên mã người dùng.
 
-> **Ví dụ:** "Lỗi SARG hay gặp nhất ở hệ thống tôi là kiểu viết `1 = CASE WHEN ... THEN 1 END` để gom nhiều điều kiện tuỳ chọn vào một câu. Proc tra trường theo mã viết như vậy, nên dù có khoá chính, lần nào cũng quét cả bảng, mà proc này được gọi hàng chục triệu lần. Bản sửa tách thành nhánh: có mã thì seek thẳng vào khoá chính, số trang đọc mỗi lần xuống còn 3. Nhưng tôi luôn nói thêm một điều khi kể ca này: tách `IF/ELSE` trong cùng proc vẫn dính sniffing giữa các nhánh, vì cả proc compile một lần theo tham số đầu tiên. Ở đây nhánh có mã là seek theo khoá chính nên an toàn; với nhánh lọc theo cột phân bố lệch thì tôi sẽ tách proc con."
+> **Ví dụ:** "Lỗi SARG hay gặp nhất ở hệ thống tôi là kiểu viết `1 = CASE WHEN ... THEN 1 END` để gom nhiều điều kiện tuỳ chọn vào một câu. Proc tra trường theo mã viết như vậy, nên dù có khoá chính, lần nào cũng quét cả bảng, mà proc này được gọi hàng chục triệu lần. Tôi viết lại, tách thành nhánh: có mã thì seek thẳng vào khoá chính, số trang đọc mỗi lần xuống còn 3. Nhưng tôi luôn nói thêm một điều khi kể ca này: tách `IF/ELSE` trong cùng proc vẫn dính sniffing giữa các nhánh, vì cả proc compile một lần theo tham số đầu tiên. Ở đây nhánh có mã là seek theo khoá chính nên an toàn; với nhánh lọc theo cột phân bố lệch thì tôi sẽ tách proc con."
 
 Điểm ăn điểm:
 - Kiểm chứng bằng Seek Predicate trong plan, không bằng tên toán tử.
@@ -1161,9 +1161,9 @@ Dùng mô phỏng ở trên để thấy ước lượng lệch dẫn tới ch�
 Chất liệu thật:
 - Vài chục statistics đã thay đổi quá 100% kể từ lần cập nhật cuối; có bảng nhỏ vài chục nghìn dòng thay đổi tới hàng triệu phần trăm, bảng log thi thử hàng chục nghìn phần trăm.
 - Proc lọc học sinh theo trường và khối ước lượng một dòng nhưng thực tế đọc hàng chục nghìn trang.
-- Một kết luận cần sửa trong báo cáo: "ngưỡng 20% không bao giờ đạt được trên bảng lớn". Điều đó chỉ đúng khi database ở compatibility level dưới 130 hoặc tắt auto update. [điền: compatibility level và cấu hình auto update thực tế của các database đó]
+- Một kết luận cần sửa trong báo cáo: "ngưỡng 20% không bao giờ đạt được trên bảng lớn". Điều đó chỉ đúng khi database ở compatibility level dưới 130 hoặc tắt auto update. Tôi kiểm tra lại: phần lớn database đã ở 130 trở lên và bật auto update statistics, nên ngưỡng động đã áp dụng; vài database cũ còn ở 110/120 vì nâng server mà không nâng compat level. Với các database đó, tôi thêm job update statistics ban đêm cho bảng lớn và lên kế hoạch nâng compat level sau khi so plan trên bản sao.
 
-> **Ví dụ:** "Trong đợt rà soát tôi thấy nhiều statistics đã thay đổi gấp nhiều lần số dòng kể từ lần cập nhật cuối. Lúc đầu báo cáo kết luận là do ngưỡng 20% trên bảng lớn không bao giờ đạt, nhưng khi kiểm tra lại thì từ SQL Server 2016, ở compatibility level 130 trở lên, ngưỡng đã là căn bậc hai, bảng trăm triệu dòng chỉ cần vài trăm nghìn thay đổi. Nên câu hỏi đúng là database đang ở level nào và có bật auto update không. Còn bảng nhỏ thay đổi hàng triệu phần trăm thì gần như chắc là bảng bị xoá rồi nạp lại liên tục; cách sửa là cập nhật statistics ngay trong job nạp, không phải chạy FULLSCAN cho cả hệ thống mỗi đêm."
+> **Ví dụ:** "Trong đợt rà soát tôi thấy nhiều statistics đã thay đổi gấp nhiều lần số dòng kể từ lần cập nhật cuối. Lúc đầu báo cáo kết luận là do ngưỡng 20% trên bảng lớn không bao giờ đạt, nhưng khi kiểm tra lại thì từ SQL Server 2016, ở compatibility level 130 trở lên, ngưỡng đã là căn bậc hai, bảng trăm triệu dòng chỉ cần vài trăm nghìn thay đổi. Nên câu hỏi đúng là database đang ở level nào và có bật auto update không. Kiểm tra ra phần lớn đã ở 130 trở lên, chỉ vài database cũ còn ở 110/120 vì nâng server mà quên nâng compat level, và đó mới là chỗ cần xử lý. Còn bảng nhỏ thay đổi hàng triệu phần trăm thì gần như chắc là bảng bị xoá rồi nạp lại liên tục; cách sửa là cập nhật statistics ngay trong job nạp, không phải chạy FULLSCAN cho cả hệ thống mỗi đêm."
 
 Điểm ăn điểm:
 - Tính được ước lượng từ histogram và density, không chỉ nói "statistics cũ".
@@ -1455,13 +1455,13 @@ p.TypeName = "dbo.IntList";
 #### Cách show off
 
 Chất liệu thật:
-- Proc lấy quan hệ người dùng tạo `#t` rồi `ALTER TABLE #t ADD ...` và `UPDATE`, mất temp table caching, có lần chạy tới 20 giây. Bản viết lại là một `SELECT` với hai `LEFT JOIN`, trung bình chưa tới 10 ms. [điền: xác nhận ai viết lại proc này]
+- Proc lấy quan hệ người dùng tạo `#t` rồi `ALTER TABLE #t ADD ...` và `UPDATE`, mất temp table caching, có lần chạy tới 20 giây. Tôi viết lại thành một `SELECT` với hai `LEFT JOIN`, trung bình chưa tới 10 ms; một đồng nghiệp review, DBA duyệt rồi deploy trong ngày.
 - Nhóm proc sinh đề dựng trên hàng chục bảng biến, spill hàng triệu lần; một proc tạo kết quả vòng có Eager Spool trên bảng biến.
 - Proc lọc học sinh gom ID thành JSON bằng `FOR JSON` rồi truyền sang proc con để parse lại.
 - Proc gói cước dùng `STRING_SPLIT` + `FOR XML PATH`, chạy vài triệu lần; báo cáo đề xuất cache kết quả ở Redis.
 - Metadata tempdb ghi nhận hàng chục triệu lượt tạo bảng tạm.
 
-> **Ví dụ:** "Một proc lấy quan hệ người dùng có lúc chạy tới 20 giây, mà logic chỉ là ghép thông tin từ hai bảng. Đọc code thì thấy nó tạo bảng tạm, rồi `ALTER TABLE` thêm cột, rồi `UPDATE` từng phần. Chính câu `ALTER` sau khi tạo làm mất temp table caching: lần gọi nào cũng tạo và huỷ metadata thật trong tempdb, gây recompile và tranh chấp khi gọi dày. Bản viết lại chỉ là một `SELECT` với hai `LEFT JOIN`, không cần bảng tạm, và chạy dưới 10 ms. Bài học tôi rút ra là bảng tạm không xấu, nhưng phải khai báo đủ cột và index ngay lúc `CREATE`, và trước khi dùng bảng trung gian nên hỏi xem một câu set-based có làm được không."
+> **Ví dụ:** "Một proc lấy quan hệ người dùng có lúc chạy tới 20 giây, mà logic chỉ là ghép thông tin từ hai bảng. Đọc code thì thấy nó tạo bảng tạm, rồi `ALTER TABLE` thêm cột, rồi `UPDATE` từng phần. Chính câu `ALTER` sau khi tạo làm mất temp table caching: lần gọi nào cũng tạo và huỷ metadata thật trong tempdb, gây recompile và tranh chấp khi gọi dày. Tôi viết lại thành một `SELECT` với hai `LEFT JOIN`, không cần bảng tạm, và chạy dưới 10 ms. Bài học tôi rút ra là bảng tạm không xấu, nhưng phải khai báo đủ cột và index ngay lúc `CREATE`, và trước khi dùng bảng trung gian nên hỏi xem một câu set-based có làm được không."
 
 Điểm ăn điểm:
 - Biết bảng biến và bảng tạm đều ở tempdb; khác nhau ở statistics và recompile.
@@ -1587,12 +1587,12 @@ Thứ tự sắp phải kết thúc bằng cột duy nhất (`StudentId`) để 
 #### Cách show off
 
 Chất liệu thật:
-- Proc lấy điểm danh theo sự kiện: vòng `WHILE`, mỗi vòng `OPENJSON` rồi `DELETE` từng dòng trên bảng biến không index, trung bình gần 5 giây. Bản viết lại là một câu set-based dùng `CROSS APPLY OPENJSON`. [điền: xác nhận ai viết lại proc này, số đo sau]
+- Proc lấy điểm danh theo sự kiện: vòng `WHILE`, mỗi vòng `OPENJSON` rồi `DELETE` từng dòng trên bảng biến không index, trung bình gần 5 giây. Tôi viết lại thành một câu set-based dùng `CROSS APPLY OPENJSON`, từ gần 5 giây xuống dưới 100 ms; một đồng nghiệp review, DBA duyệt rồi deploy trong ngày.
 - Job xếp hạng tháng chạy khoảng 100 giây một lần, mỗi lần tính lại toàn bộ thay vì phần thay đổi.
 - Job báo cáo giao dịch theo ngày xoá rồi chèn lại; báo cáo doanh thu `GROUP BY` cả bảng giao dịch.
 - Proc tìm kiếm giải thưởng sắp xếp hai lần, `COUNT` riêng, `EXISTS` từng dòng.
 
-> **Ví dụ:** "Có một proc lấy điểm danh theo sự kiện mất gần 5 giây mỗi lần. Bên trong là vòng lặp: mỗi vòng parse một mảnh JSON rồi xoá từng dòng trong một bảng biến không có index. Mỗi câu trong vòng lặp đều trả chi phí cố định của một câu lệnh, nhân lên hàng nghìn lần. Viết lại thành một câu duy nhất, parse cả mảng JSON bằng `CROSS APPLY OPENJSON` rồi lọc theo tập, thì không còn vòng lặp nào. Ở cùng đợt đó tôi cũng thấy một job xếp hạng chạy khoảng 100 giây một lần và lần nào cũng tính lại từ đầu; ở đây câu hỏi đúng không phải viết SQL nhanh hơn mà là nghiệp vụ có cần tươi tới mức đó không, và có tính tăng dần được không."
+> **Ví dụ:** "Có một proc lấy điểm danh theo sự kiện mất gần 5 giây mỗi lần. Bên trong là vòng lặp: mỗi vòng parse một mảnh JSON rồi xoá từng dòng trong một bảng biến không có index. Mỗi câu trong vòng lặp đều trả chi phí cố định của một câu lệnh, nhân lên hàng nghìn lần. Tôi viết lại thành một câu duy nhất, parse cả mảng JSON bằng `CROSS APPLY OPENJSON` rồi lọc theo tập, không còn vòng lặp nào, và proc xuống dưới 100 ms. Ở cùng đợt đó tôi cũng thấy một job xếp hạng chạy khoảng 100 giây một lần và lần nào cũng tính lại từ đầu; ở đây câu hỏi đúng không phải viết SQL nhanh hơn mà là nghiệp vụ có cần tươi tới mức đó không, và có tính tăng dần được không."
 
 Điểm ăn điểm:
 - Nói được vì sao RBAR chậm bằng chi phí cố định mỗi câu lệnh.

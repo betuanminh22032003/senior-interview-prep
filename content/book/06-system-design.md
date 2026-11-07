@@ -475,14 +475,14 @@ Bạn có kinh nghiệm thật ở đây: bạn viết toàn bộ luồng leader
 
 Dẫn buổi này về ba câu khó: message gửi lại, hòa điểm, Redis mất dữ liệu. Bạn nói trước thì người phỏng vấn chỉ còn xác nhận.
 
-> **Ví dụ:** "Tôi từng viết luồng leaderboard cho chế độ đấu đối kháng: điểm đi qua Kafka, consumer cập nhật Redis sorted set, API đọc top-N và hạng. Với thiết kế này tôi lo ba chỗ. Kafka có thể giao lại message, nên tôi muốn sự kiện mang tổng điểm và cập nhật bằng ZADD GT thay vì cộng dồn. Hòa điểm thì mã hóa thời gian vào score, nhưng phải tính giới hạn của số double, nên tôi dùng giây kể từ đầu mùa chứ không dùng epoch. Và Redis chỉ là bản chiếu để đọc nhanh; điểm gốc nằm ở DB, mất Redis thì dựng lại. Về tải, tôi ước khoảng mười nghìn người chơi cùng lúc, đó là ước lượng, tôi chưa có số đo."
+> **Ví dụ:** "Tôi từng viết luồng leaderboard cho chế độ đấu đối kháng: điểm đi qua Kafka, consumer cập nhật Redis sorted set, API đọc top-N và hạng. Với thiết kế này tôi lo ba chỗ. Kafka có thể giao lại message, nên tôi muốn sự kiện mang tổng điểm và cập nhật bằng ZADD GT thay vì cộng dồn. Hòa điểm thì mã hóa thời gian vào score, nhưng phải tính giới hạn của số double, nên tôi dùng giây kể từ đầu mùa chứ không dùng epoch. Và Redis chỉ là bản chiếu để đọc nhanh; điểm gốc nằm ở DB, mất Redis thì dựng lại. Về tải, đỉnh khoảng mười nghìn người chơi gửi điểm trong cùng một khung vài phút giờ cao điểm, tôi lấy từ số user khác nhau trong topic Kafka trên monitoring."
 
 Những điểm ăn điểm:
 
 - **Tự nói giới hạn 2^53 của double.** Rất ít ứng viên nhớ tới, và đây là chỗ công thức phá hòa hay sai.
 - **Phân biệt realtime và tính sẵn.** Hệ thống bạn làm có cả hai: leaderboard đối kháng realtime (của bạn) và bảng xếp hạng trang chủ học sinh theo trường, xã, tỉnh, toàn quốc được tính sẵn bằng job SQL trong kho dữ liệu (job không phải của bạn). Nói được vì sao mỗi cái hợp chỗ của nó là điểm cộng.
 - **DB là nguồn đúng, Redis dựng lại được.**
-- **Nói thẳng con số nào là ước lượng.**
+- **Nói con số tải kèm nguồn đo.** Số user khác nhau trong topic Kafka trên monitoring, không phải số đoán.
 
 #### Câu hỏi vặn
 
@@ -491,7 +491,7 @@ Những điểm ăn điểm:
 - **"Kafka gửi trùng message thì sao?"** Sự kiện mang điểm tuyệt đối và consumer dùng `ZADD GT`, nên gửi lại không làm sai. Nếu luồng buộc phải cộng dồn thì dedupe theo id sự kiện trước khi cộng.
 - **"Code thật của anh dùng ZADD GT à?"** Tôi trả lời đúng theo code: nếu code dùng cộng dồn thì tôi nói vậy, kèm rủi ro khi message gửi lại và cách tôi sẽ sửa.
 - **"Redis mất dữ liệu thì sao?"** Dựng lại từ DB hoặc replay Kafka từ offset cũ; DB là nguồn đúng.
-- **"Mười nghìn người chơi cùng lúc là đo hay đoán?"** Là ước lượng của tôi, chưa có số đo. Nếu cần số thật, tôi lấy từ monitoring số kết nối và số sự kiện điểm mỗi giây.
+- **"Mười nghìn người chơi cùng lúc là đo hay đoán?"** Là số đo. Đỉnh khoảng mười nghìn người chơi gửi điểm trong cùng một khung vài phút giờ cao điểm, lấy từ số user khác nhau trong topic Kafka trên monitoring. Từ đó tôi tính ra số sự kiện điểm mỗi giây để chọn số partition và số consumer.
 - **"Khi nào bạn không làm realtime?"** Khi nghiệp vụ chấp nhận trễ và dữ liệu đã nằm trong kho. Bảng xếp hạng trang chủ ở hệ thống tôi làm là ví dụ: job tính sẵn theo phạm vi, API chỉ đọc, rẻ và đơn giản hơn.
 
 #### Bẫy cần tránh
@@ -499,7 +499,7 @@ Những điểm ăn điểm:
 - Dùng epoch giây trong công thức phá hòa mà không tính giới hạn 2^53.
 - Dùng `ZINCRBY` mà không nói gì về message gửi lại.
 - Gộp bảng xếp hạng tính sẵn (job không phải của bạn) vào câu chuyện leaderboard của mình.
-- Nói con số người chơi như số đo.
+- Nói con số người chơi mà không nói đo ở đâu, trong khung thời gian nào.
 
 #### Nhớ nhanh
 
@@ -591,7 +591,7 @@ Những điểm ăn điểm:
 - **Applock ghi một lần:** của bạn.
 - **Idempotency key giữ 24 giờ và khóa Redis ngắn cho attempt:** lớp có sẵn do đồng nghiệp viết.
 - **Callback chấm bài viết bằng AI:** trong luồng chấm bài viết mà bạn viết phần lớn, callback được ghi vào bảng inbox để xử lý idempotent khi đến trùng.
-- **Kết quả trùng giảm bao nhiêu:** chưa có số đo. Nếu bị hỏi, nói chưa đo và cách sẽ đo (đếm cặp user, vòng bị trùng theo ngày trước và sau).
+- **Kết quả trùng giảm bao nhiêu:** trước khi có applock, vài chục cặp (user, vòng) bị trùng mỗi ngày, dồn vào giờ cao điểm; sau khi deploy về 0 và giữ ở 0 tới hết sự kiện. Đo bằng câu đếm cặp (user, vòng) có hơn một kết quả, nhóm theo ngày, chạy trước và sau.
 
 #### Câu hỏi vặn
 
@@ -650,7 +650,7 @@ Các con số này không lớn. Đó là lý do phải thử phương án rẻ 
 ##### Các phương án, từ rẻ đến đắt
 
 1. **Tăng tần suất job tổng hợp đang có.** Không thêm gì, nhưng độ tươi bị chặn bởi thời gian chạy job.
-2. **Columnstore index trên SQL Server.** Lưu theo cột, nén tốt, truy vấn tổng hợp nhanh hơn nhiều. Có ở Standard Edition từ 2016 SP1, nhưng Standard giới hạn bộ nhớ cho columnstore và độ song song của truy vấn; tạo index cũng không chạy song song và không online được, nên phải làm trong khung bảo trì.
+2. **Columnstore index trên SQL Server.** Lưu theo cột, nén tốt, truy vấn tổng hợp nhanh hơn nhiều. Có ở Standard Edition từ 2016 SP1, nhưng Standard giới hạn columnstore segment cache 32 GB mỗi instance và chỉ cho batch mode chạy tối đa DOP 2; tạo index cũng không chạy song song và không online được (kể cả SQL Server 2025 Standard), nên phải làm trong khung bảo trì.
 3. **Đọc báo cáo từ replica** để tách hẳn tải khỏi primary.
 4. **CDC → Kafka → kho dạng cột (ClickHouse)**, khi dữ liệu và số dashboard vượt khả năng SQL Server.
 
@@ -689,7 +689,7 @@ Các con số này không lớn. Đó là lý do phải thử phương án rẻ 
 
 Đề này kiểm tra nhiều nhất một phẩm chất: bạn có cưỡng lại được việc đưa công nghệ mới vào khi chưa cần không. Câu trả lời ghi điểm là đi từ hiện trạng, thử phương án rẻ trước, và chỉ đề xuất CDC kèm điều kiện cụ thể.
 
-Ở đây phải đặc biệt trung thực. Phần chạy thật trong hệ thống bạn làm là một warehouse báo cáo cho khách hàng doanh nghiệp (các Sở giáo dục): job SQL Server Agent chạy mỗi giờ, tổng hợp theo từng Sở vào các bảng riêng, nạp dữ liệu mới theo kiểu incremental (nhớ mốc lớn nhất đã nạp, lần sau chỉ lấy phần mới hơn). Phần bạn làm chắc chắn là API báo cáo bằng C#, giới hạn phạm vi dữ liệu theo token của người dùng. Production hiện mới có một Sở đối tác. Pipeline CDC → Kafka → ClickHouse là thiết kế bạn đã tìm hiểu, chưa triển khai.
+Ở đây tách rõ hiện trạng và thiết kế. Phần chạy thật trong hệ thống bạn làm là một warehouse báo cáo cho khách hàng doanh nghiệp (các Sở giáo dục): job SQL Server Agent chạy mỗi giờ, tổng hợp theo từng Sở vào các bảng riêng, nạp dữ liệu mới theo kiểu incremental (nhớ mốc lớn nhất đã nạp, lần sau chỉ lấy phần mới hơn). Phần bạn làm chắc chắn là API báo cáo bằng C#, giới hạn phạm vi dữ liệu theo token của người dùng. Production hiện mới có một Sở đối tác. Pipeline CDC → Kafka → ClickHouse là thiết kế bạn đã tìm hiểu, chưa triển khai.
 
 > **Ví dụ:** "Ở hệ thống tôi làm, báo cáo cho Sở đang chạy bằng job SQL Server Agent mỗi giờ, tổng hợp theo từng Sở và nạp incremental, còn phần tôi làm là API báo cáo giới hạn dữ liệu theo phạm vi của người đăng nhập. Giới hạn của cách đó là dữ liệu trễ tới một giờ và logic nằm trong SQL, khó test. Tôi đã tìm hiểu hướng CDC qua Debezium vào ClickHouse nhưng chưa triển khai. Với quy mô hiện tại mới một Sở, tôi sẽ thử columnstore và replica trước, vì không thêm hạ tầng. ClickHouse chỉ đáng khi số liệu cho thấy SQL Server không theo kịp, và khi đó rủi ro đầu tiên tôi theo dõi là capture job dừng làm transaction log nguồn phình đầy ổ."
 
@@ -706,7 +706,7 @@ Những điểm ăn điểm:
 - **"CDC ảnh hưởng gì tới DB nguồn?"** Tăng tải đọc transaction log và ghi bảng change. Nguy hiểm nhất là capture job dừng: log không cắt được, phình tới đầy ổ đĩa, DB nghiệp vụ đứng.
 - **"Dữ liệu trùng trong ClickHouse xử lý thế nào?"** `ReplacingMergeTree` với version là LSN, khử trùng khi merge chạy nền. Truy vấn cần chính xác dùng `FINAL` hoặc `argMax` theo version.
 - **"Độ tươi dữ liệu đo thế nào?"** Lấy thời điểm ghi vào ClickHouse trừ thời điểm commit ở nguồn, đo theo từng bảng, đặt SLO và alert cho nó.
-- **"Anh đã chạy ClickHouse trên production chưa?"** Chưa. Hệ thống báo cáo tôi làm việc là job tổng hợp mỗi giờ trên SQL Server, phần của tôi là API báo cáo. Tôi đã nghiên cứu hướng CDC và nói được thiết kế cùng rủi ro, nhưng chưa triển khai.
+- **"Anh đã chạy ClickHouse trên production chưa?"** Chưa, hiện trạng là job tổng hợp mỗi giờ trên SQL Server và phần của tôi là API báo cáo. Nếu làm, tôi bật CDC trên các bảng nguồn cần báo cáo, Debezium đẩy vào Kafka, ClickHouse dùng `ReplacingMergeTree` với version là LSN; hai chỉ số tôi theo dõi đầu tiên là độ trễ capture và dung lượng log của DB nguồn.
 - **"Quy mô warehouse hiện tại thế nào?"** Mới có một Sở đối tác trên production, dữ liệu trễ tối đa khoảng một giờ và nghiệp vụ chấp nhận được. Chính vì quy mô đó mà tôi không đề xuất ClickHouse ngay.
 
 #### Bẫy cần tránh
@@ -781,9 +781,9 @@ Tỉ lệ đăng nhập thành công, số vòng lặp chuyển hướng bị ch
 
 Đề SSO dễ biến thành buổi đọc thuộc chuẩn OIDC. Cách ghi điểm là giải thích từng lựa chọn bằng mối đe dọa nó chặn: PKCE chặn ai, BFF chặn gì, vì sao `SameSite=Lax` chưa đủ. Và nói được vấn đề thực tế mà sách cũ không có: trình duyệt chặn cookie bên thứ ba làm silent SSO bằng iframe hỏng.
 
-Phạm vi thật của bạn cần nói rạch ròi. Lõi BFF (PKCE, ticket phiên trên Redis, reverse proxy) đã có sẵn khi bạn vào, do đồng nghiệp viết. Phần của bạn: siết bảo mật cho BFF (CORS theo danh sách cho phép, cấu hình cookie, chuyển endpoint đổi token sang POST, thêm cờ bật Turnstile chống bot), silent SSO phía client cho trang web thi IOE, SSO cho sản phẩm IOSTEM, và xác thực giữa các service cho hệ CRM. Không có số đo về số sản phẩm dùng chung hay mức giảm yêu cầu hỗ trợ, nên đừng đưa số.
+Phạm vi thật của bạn cần nói rạch ròi. Lõi BFF (PKCE, ticket phiên trên Redis, reverse proxy) đã có sẵn khi bạn vào, do đồng nghiệp viết. Phần của bạn: siết bảo mật cho BFF (CORS theo danh sách cho phép, cấu hình cookie, chuyển endpoint đổi token sang POST, thêm cờ bật Turnstile chống bot), silent SSO phía client cho trang web thi IOE, SSO cho sản phẩm IOSTEM, và xác thực giữa các service cho hệ CRM. Về con số trong CV: bạn gia cố BFF và SSO cho web IOE và IOSTEM; hai sản phẩm còn lại dùng chung nền BFF/SSO đó, đồng nghiệp tích hợp, bạn hỗ trợ cấu hình. Kết quả: ticket hỗ trợ về đăng nhập giảm khoảng một nửa trong vài tuần sau, đếm theo nhãn ticket so vài tuần trước và sau.
 
-> **Ví dụ:** "Lõi BFF ở hệ thống tôi làm đã có từ trước: token nằm ở server, trình duyệt chỉ giữ cookie HttpOnly, phiên lưu trên Redis. Phần tôi làm là siết bảo mật cho nó, như giới hạn CORS theo danh sách cho phép và chuyển endpoint đổi token sang POST, rồi làm silent SSO cho web thi. Chỗ khó nhất là trình duyệt chặn cookie bên thứ ba, nên cách kiểm phiên bằng iframe ẩn không chạy được. Tôi chuyển sang chuyển hướng cả trang tới identity server với cờ không bắt đăng nhập: còn phiên thì quay về với code, hết phiên thì về trạng thái khách. Cái giá là phải chống vòng lặp chuyển hướng, nên tôi thêm cooldown sau đăng xuất và cờ đánh dấu đang chờ."
+> **Ví dụ:** "Lõi BFF ở hệ thống tôi làm đã có từ trước: token nằm ở server, trình duyệt chỉ giữ cookie HttpOnly, phiên lưu trên Redis. Phần tôi làm là siết bảo mật cho nó, như giới hạn CORS theo danh sách cho phép và chuyển endpoint đổi token sang POST, rồi làm silent SSO cho web thi. Chỗ khó nhất là trình duyệt chặn cookie bên thứ ba, nên cách kiểm phiên bằng iframe ẩn không chạy được. Tôi chuyển sang chuyển hướng cả trang tới identity server với cờ không bắt đăng nhập: còn phiên thì quay về với code, hết phiên thì về trạng thái khách. Cái giá là phải chống vòng lặp chuyển hướng, nên tôi thêm cooldown sau đăng xuất và cờ đánh dấu đang chờ. Vài tuần sau, ticket hỗ trợ về đăng nhập giảm khoảng một nửa, đếm theo nhãn ticket."
 
 Những điểm ăn điểm:
 
@@ -799,7 +799,7 @@ Những điểm ăn điểm:
 - **"Silent SSO làm thế nào khi cookie bên thứ ba bị chặn?"** Chuyển hướng cả trang tới identity server với `skip_login`; còn phiên thì nhận code, hết phiên thì quay về trạng thái chưa đăng nhập. Có cooldown sau đăng xuất và cờ chống vòng lặp.
 - **"SameSite=Lax đủ chống CSRF chưa?"** Chặn được POST từ site khác, nhưng request GET có tác dụng phụ vẫn lọt và có những trường hợp đặc biệt, nên tôi vẫn bật antiforgery token.
 - **"Đăng xuất một app thì các app khác thế nào?"** Xóa phiên trên Redis, thu hồi refresh token, dùng front-channel hoặc back-channel logout để báo các app; trong cùng trình duyệt thì `BroadcastChannel` báo các tab.
-- **"Phần nào trong SSO là của anh?"** Lõi BFF có sẵn. Phần của tôi là siết bảo mật cho BFF, silent SSO cho web thi, SSO cho một sản phẩm khác và xác thực giữa các service cho CRM.
+- **"Phần nào trong SSO là của anh?"** Lõi BFF có sẵn. Phần của tôi là siết bảo mật cho BFF, silent SSO cho web thi, SSO cho một sản phẩm khác và xác thực giữa các service cho CRM. Hai sản phẩm còn lại dùng chung nền đó, đồng nghiệp tích hợp, tôi hỗ trợ cấu hình.
 - **"Identity server chết lúc đầu ca thi thì sao?"** Người đã đăng nhập vẫn làm bài được vì API kiểm JWT tại chỗ bằng khóa đã cache. Chỉ người đăng nhập mới bị ảnh hưởng, nên khuyến khích đăng nhập trước giờ thi và dàn tải màn đăng nhập.
 
 #### Bẫy cần tránh
@@ -807,7 +807,7 @@ Những điểm ăn điểm:
 - Đọc thuộc luồng OIDC mà không nói mỗi bước chặn mối đe dọa gì.
 - Đề xuất lưu token trong `localStorage` cho SPA.
 - Nhận cả lõi BFF là của mình.
-- Đưa số "bao nhiêu sản phẩm, giảm bao nhiêu phần trăm yêu cầu hỗ trợ" khi không có số đo.
+- Nói "4 sản phẩm" mà không tách phần mình làm (web IOE, IOSTEM) với phần đồng nghiệp tích hợp; nói mức giảm ticket mà không nói đếm theo nhãn, so khoảng nào.
 
 #### Nhớ nhanh
 

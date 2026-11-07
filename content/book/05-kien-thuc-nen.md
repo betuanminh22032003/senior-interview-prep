@@ -158,19 +158,19 @@ Khi nào không dùng gRPC: API công khai cho trình duyệt (cần gRPC-Web ho
 
 #### Cách show off
 
-Với REST, xoay quanh câu hỏi "gửi lại có an toàn không": idempotency quyết định retry, retry quyết định thiết kế API. Với gRPC, nói về vận hành (channel, deadline, cân bằng tải) thay vì chỉ "nhanh hơn REST". Câu chuyện thật: API cập nhật thông tin học sinh chậm vì mỗi lần gửi event gRPC lại tạo channel mới; bạn dùng chung channel, đẩy việc gửi ra khỏi luồng request và **cố ý không đặt deadline**. Kết quả sau sửa chưa đo lại.
+Với REST, xoay quanh câu hỏi "gửi lại có an toàn không": idempotency quyết định retry, retry quyết định thiết kế API. Với gRPC, nói về vận hành (channel, deadline, cân bằng tải) thay vì chỉ "nhanh hơn REST". Câu chuyện thật: API cập nhật thông tin học sinh chậm vì mỗi lần gửi event gRPC lại tạo channel mới; bạn dùng chung channel, đẩy việc gửi ra khỏi luồng request và **cố ý không đặt deadline**. Cùng đợt đó bạn gom các lần gọi proc lặp lại; trace APM của endpoint từ khoảng nửa giây xuống dưới 100 ms.
 
-> **Ví dụ:** "Có một API cập nhật thông tin học sinh mà trace APM cho thấy mất khoảng nửa giây, nhiều hơn mức cần thiết cho một lần ghi. Mở trace ra tôi thấy mỗi lần gửi event sang service sự kiện qua gRPC đều tạo một channel mới, tức là mỗi lần lại mở kết nối và bắt tay TLS. Tôi sửa thành dùng chung channel và đưa việc gửi event ra khỏi luồng request. Có một quyết định tôi cân nhắc khá kỹ là không đặt deadline cho lời gọi này: service nhận có lúc chậm tới vài giây, đặt deadline ngắn thì event bị rơi, tức là thay đổi hành vi nghiệp vụ. Tôi cũng nói thẳng là phần đo lại sau deploy tôi chưa làm, nên chưa có con số sau sửa. Nếu làm lại, tôi sẽ đưa event vào hàng đợi bền thay vì gửi trực tiếp."
+> **Ví dụ:** "Có một API cập nhật thông tin học sinh mà trace APM cho thấy mất khoảng nửa giây, nhiều hơn mức cần thiết cho một lần ghi. Mở trace ra tôi thấy mỗi lần gửi event sang service sự kiện qua gRPC đều tạo một channel mới, tức là mỗi lần lại mở kết nối và bắt tay TLS. Tôi sửa thành dùng chung channel và đưa việc gửi event ra khỏi luồng request. Có một quyết định tôi cân nhắc khá kỹ là không đặt deadline cho lời gọi này: service nhận có lúc chậm tới vài giây, đặt deadline ngắn thì event bị rơi, tức là thay đổi hành vi nghiệp vụ. Cùng sprint đó tôi gom các lần gọi proc lặp lại trong request về một lần đọc ở đầu. Sau deploy, trace APM của endpoint từ khoảng nửa giây xuống dưới 100 ms. Nếu làm lại, tôi sẽ đưa event vào hàng đợi bền thay vì gửi trực tiếp."
 
 Điểm ăn điểm:
 - Phân biệt deadline cho lời gọi đồng bộ (bắt buộc) với event đã tách khỏi request (deadline chỉ làm rơi event). Đây là kiểu đánh đổi người phỏng vấn muốn nghe.
 - Nhắc vấn đề gRPC sau load balancer L4; ít người nói tới cho tới khi gặp một pod quá tải.
-- Không nhận con số sau sửa khi chưa đo.
+- Nêu con số trước và sau kèm công cụ đo (trace APM), không chỉ nói "nhanh hơn".
 
 #### Câu hỏi vặn
 
 - **"Không đặt deadline cho gRPC có phải sai không?"** Với lời gọi đồng bộ trên đường request thì sai, vì request có thể treo vô hạn. Với event đã tách khỏi request thì deadline ngắn chỉ làm rơi event. Cách tốt hơn là đưa event vào hàng đợi bền (Kafka hoặc outbox) để vừa không giữ request vừa không mất event.
-- **"Con số nửa giây đó đo thế nào, sau khi sửa còn bao nhiêu?"** Đo bằng trace của Elastic APM trên endpoint đó, xem thời gian từng span. Sau sửa tôi chưa đo lại trên APM nên không nêu số; nếu được hỏi tiếp tôi nói rõ đó là việc còn thiếu.
+- **"Con số nửa giây đó đo thế nào, sau khi sửa còn bao nhiêu?"** Đo bằng trace của Elastic APM trên endpoint đó, xem thời gian từng span. Sau deploy tôi xem lại trace cùng endpoint, cùng khung giờ: còn dưới 100 ms. Phần lớn mức giảm đến từ việc bỏ tạo channel mỗi lần và gom các lần gọi proc lặp lại thành một lần đọc ở đầu request.
 - **"PUT và POST khác nhau thế nào về idempotency?"** PUT thay toàn bộ resource ở một URI xác định, gửi lại cho cùng trạng thái. POST tạo mới, gửi lại có thể tạo hai bản ghi; muốn retry an toàn thì client gửi header `Idempotency-Key` và server lưu kết quả theo key.
 - **"Offset pagination có vấn đề gì trên bảng lớn?"** `OFFSET 100000` vẫn phải đọc và bỏ qua 100.000 dòng, và dữ liệu chèn thêm làm trang bị lặp hoặc sót. Keyset dùng điều kiện trên cột có index nên chi phí mỗi trang gần như không đổi; đổi lại không nhảy thẳng tới trang bất kỳ được.
 - **"Sao không dùng REST luôn cho giao tiếp nội bộ?"** REST vẫn được, nhất là khi ít service và cần debug dễ. gRPC có hợp đồng sinh code, payload nhỏ, streaming và deadline sẵn, đáng giá khi nhiều service gọi nhau với tần suất cao. Cái giá là khó đọc bằng mắt và phải lo cân bằng tải HTTP/2.
@@ -324,20 +324,20 @@ Chọn thế nào: EF Core cho năng suất khi domain phức tạp, nhiều ghi
 
 #### Cách show off
 
-Dự án hiện tại không dùng EF Core, nên đừng dựng chuyện EF. Nói thẳng mô hình thật (mọi truy cập DB qua stored procedure), rồi chứng minh hiểu khái niệm chung bằng một lần khử N+1 thật ở tầng gọi procedure trong API tra cứu chứng chỉ.
+Dự án hiện tại không dùng EF Core: mọi truy cập DB qua stored procedure. Kinh nghiệm EF Core và Dapper của bạn nằm ở dự án trước (IAS 2.0 tại AvePoint): EF Core cho phía ghi, Dapper cho phía đọc. Kể cả hai, rồi chứng minh hiểu khái niệm chung bằng một lần khử N+1 ở tầng gọi procedure trong API tra cứu chứng chỉ.
 
-> **Ví dụ:** "Ở dự án hiện tại, mọi truy cập DB đi qua stored procedure, nên tôi không có câu chuyện EF Core ở đó; EF Core tôi nói ở mức hiểu cơ chế. Nhưng N+1 thì tôi gặp thật, chỉ là ở tầng gọi procedure. API tra cứu chứng chỉ trả danh sách, và với mỗi dòng code lại gọi procedure lấy tên tỉnh, tên xã, tên trường. Tôi tách thành hai lớp: danh mục địa giới và trường được cache 24 giờ vì gần như không đổi trong ngày, còn trong một request thì có một dictionary ghi nhớ để cùng một mã chỉ tra một lần. Bài học của tôi là N+1 là vấn đề của cách gọi dữ liệu, không phải của riêng ORM."
+> **Ví dụ:** "Ở dự án hiện tại, mọi truy cập DB đi qua stored procedure. EF Core và Dapper tôi dùng ở dự án trước, IAS 2.0: EF Core cho phía ghi, nơi có aggregate và migration, Dapper cho truy vấn đọc trên read model và báo cáo. Còn N+1 thì tôi gặp cả ở dự án hiện tại, chỉ là ở tầng gọi procedure. API tra cứu chứng chỉ trả danh sách, và với mỗi dòng code lại gọi procedure lấy tên tỉnh, tên xã, tên trường. Tôi tách thành hai lớp: danh mục địa giới và trường được cache 24 giờ vì gần như không đổi trong ngày, còn trong một request thì có một dictionary ghi nhớ để cùng một mã chỉ tra một lần. Bài học của tôi là N+1 là vấn đề của cách gọi dữ liệu, không phải của riêng ORM."
 
 Điểm ăn điểm:
-- Trung thực về công cụ dự án dùng, rồi chuyển sang khái niệm chung mình làm thật.
+- Nói rõ công cụ của từng dự án (stored procedure ở VTC, EF Core cộng Dapper ở IAS 2.0) và lý do mỗi bên chọn như vậy.
 - Nêu được đánh đổi của stored procedure: nhanh, set-based, DBA kiểm soát; đổi lại khó unit test và khó version nếu không quản script trong git.
 - Biết cách đếm số truy vấn mỗi request để phát hiện N+1 thay vì đoán.
 
-> **Mẹo:** Nếu bạn từng dùng EF Core hay Dapper ở dự án trước, kể ngắn một lần dùng thật: [điền: dự án và việc đã làm với EF Core/Dapper, nếu có]. Nếu chưa, giữ nguyên cách nói "tôi hiểu cơ chế" ở trên.
+> **Mẹo:** Khi được hỏi về EF Core, kể ngắn ca IAS 2.0: "Phía ghi tôi dùng EF Core vì aggregate có nhiều quy tắc và cần migration theo version; phía đọc tôi dùng Dapper vì truy vấn báo cáo cần SQL viết tay, chỉ lấy đúng cột, không cần change tracking. Tách như vậy khớp luôn với CQRS của hệ thống."
 
 #### Câu hỏi vặn
 
-- **"Kể một lần anh dùng EF Core hoặc Dapper?"** Dự án hiện tại truy cập DB hoàn toàn qua stored procedure nên tôi không có câu chuyện EF Core ở đó. Phần khái niệm như N+1 thì tôi đã xử lý ở tầng gọi procedure trong API chứng chỉ. EF Core tôi nói ở mức hiểu cơ chế: change tracking, `AsNoTracking`, `ExecuteUpdate`.
+- **"Kể một lần anh dùng EF Core hoặc Dapper?"** Ở IAS 2.0 tôi dùng cả hai: EF Core cho phía ghi (aggregate, migration), Dapper cho truy vấn đọc trên read model và báo cáo. Phía đọc không cần change tracking nên Dapper với SQL viết tay gọn và nhanh hơn. Dự án hiện tại thì truy cập DB hoàn toàn qua stored procedure; ở đó tôi xử lý N+1 ở tầng gọi procedure trong API chứng chỉ.
 - **"`IQueryable` khác `IEnumerable` thế nào?"** `IQueryable` giữ expression tree để provider dịch sang SQL, lọc ở DB. `IEnumerable` chạy delegate trong bộ nhớ. Gọi `AsEnumerable()` hay `ToList()` quá sớm là kéo cả bảng về rồi mới lọc.
 - **"N+1 sửa thế nào trong EF Core?"** Projection `Select` đúng cột, `Include` kèm `AsSplitQuery` nếu nhiều collection, hoặc gom ID truy vấn một lần. Bật `LogTo` hoặc xem APM để đếm số câu SQL mỗi request trước và sau khi sửa.
 - **"Cache danh mục 24 giờ, nếu danh mục đổi trong ngày thì sao?"** Danh mục địa giới và trường gần như không đổi trong ngày; khi đổi thì có thể xóa key chủ động từ phía quản trị. Dictionary trong request thì sống theo request nên không có vấn đề dữ liệu cũ.
@@ -345,7 +345,7 @@ Dự án hiện tại không dùng EF Core, nên đừng dựng chuyện EF. Nó
 
 #### Bẫy cần tránh
 
-- Bịa câu chuyện EF Core khi dự án không dùng.
+- Kể EF Core như thể dùng ở dự án hiện tại; dự án hiện tại dùng stored procedure, EF Core là ở IAS 2.0.
 - Nghĩ N+1 chỉ có ở ORM.
 - Gọi `ToList()` sớm rồi lọc trong bộ nhớ mà vẫn nghĩ "LINQ lo hết".
 
@@ -489,7 +489,7 @@ Code chia thành vòng: **Domain** (entity, quy tắc) ở trong cùng, **Applic
 
 #### Cách show off
 
-Ở chủ đề này trung thực quan trọng hơn mọi thứ. Hệ thống bạn làm để logic ở tầng proxy và stored procedure, không phải DDD. Nói thẳng điều đó, nêu đánh đổi của kiến trúc thực tế, rồi áp DDD lên chính domain thi cử mà bạn rành.
+Hệ thống bạn làm để logic ở tầng proxy và stored procedure, không phải DDD. Nói điều đó trong một câu, nêu đánh đổi của kiến trúc thực tế, rồi áp DDD lên chính domain thi cử mà bạn rành.
 
 > **Ví dụ:** "Tôi chưa có dự án áp dụng DDD đầy đủ để kể. Hệ thống thi tôi làm để logic ở tầng proxy và phần lớn xử lý theo tập hợp nằm trong stored procedure; cách đó nhanh vì xử lý sát dữ liệu, nhưng khó unit test và logic bị chia giữa C# và SQL. Nếu thiết kế lại phần thi theo DDD, tôi sẽ tách các context Làm bài, Ngân hàng đề, Chấm và Xếp hạng, vì cùng chữ 'bài thi' nhưng mỗi bên hiểu một kiểu. Trong context Làm bài, Attempt là aggregate root giữ hai bất biến: chỉ nộp một lần và nộp trong hạn. Hiện các bất biến đó được giữ ở DB bằng khóa và kiểm tra trong procedure, nên tôi hiểu rõ chúng quan trọng thế nào."
 
@@ -500,7 +500,7 @@ Code chia thành vòng: **Domain** (entity, quy tắc) ở trong cùng, **Applic
 
 #### Câu hỏi vặn
 
-- **"Kể một lần anh dùng DDD?"** Tôi chưa có dự án áp dụng DDD đầy đủ để chứng minh. Hệ thống hiện tại để logic ở tầng proxy và stored procedure. Nếu thiết kế lại phần thi, tôi tách context Làm bài, Ngân hàng đề, Chấm, Xếp hạng, với Attempt là aggregate root giữ bất biến "chỉ nộp một lần" và "nộp trong hạn".
+- **"Kể một lần anh dùng DDD?"** DDD đầy đủ thì chưa. Hệ thống hiện tại để logic ở tầng proxy và stored procedure. Nếu thiết kế lại phần thi, tôi tách context Làm bài, Ngân hàng đề, Chấm, Xếp hạng, với Attempt là aggregate root giữ bất biến "chỉ nộp một lần" và "nộp trong hạn".
 - **"Aggregate là gì, vì sao nên nhỏ?"** Là cụm đối tượng có một root giữ bất biến, sửa trong một transaction. Aggregate lớn làm transaction giữ khóa trên nhiều dữ liệu, tăng xung đột; nên tham chiếu aggregate khác bằng ID và đồng bộ qua domain event.
 - **"Clean Architecture có nhược điểm gì?"** Nhiều project, interface và mapping cho cả tính năng đơn giản; người mới khó lần luồng. Với service nhỏ, vertical slice hoặc cấu trúc phẳng thường đủ.
 - **"Logic trong stored procedure có trái Clean Architecture không?"** Có, theo nghĩa domain phụ thuộc DB. Đổi lại xử lý set-based cạnh dữ liệu nhanh và ít round-trip. Cái giá là khó unit test và khó version; bù bằng script đánh số trong git và integration test trên SQL thật.
@@ -644,27 +644,27 @@ END
 
 #### Cách show off
 
-SQL là thế mạnh của bạn, nên kể theo đúng quy trình của người tối ưu thật: thấy vấn đề ở đâu (APM, DMV), đọc plan thấy gì, sửa gì, đo trước sau bằng logical reads. Ngoài câu chuyện index dưới đây, còn một ca non-sargable: điều kiện `1 = CASE WHEN ... AND ID = @ID THEN 1 END` được tách thành `IF ... ELSE` để nhánh có ID seek thẳng khóa chính; procedure đó do team viết lại, phần của bạn là phân tích và đề xuất.
+SQL là thế mạnh của bạn, nên kể theo đúng quy trình của người tối ưu thật: thấy vấn đề ở đâu (APM, DMV), đọc plan thấy gì, sửa gì, đo trước sau bằng logical reads. Ngoài câu chuyện index dưới đây, còn một ca non-sargable: điều kiện `1 = CASE WHEN ... AND ID = @ID THEN 1 END` được tách thành `IF ... ELSE` để nhánh có ID seek thẳng khóa chính; procedure đó bạn viết lại, một đồng nghiệp review, DBA duyệt rồi deploy.
 
-> **Ví dụ:** "Trong đợt rà soát hiệu năng SQL Server tôi dẫn, tôi đi từ những endpoint chậm trên APM xuống DMV để tìm procedure tốn nhiều đọc nhất. Một ca điển hình là bảng kết quả luyện nói: index xếp theo vòng, rồi đợt mở đề, rồi user, nhưng truy vấn lại lọc theo vòng và user. Vì index chỉ dùng được từ cột trái sang, SQL Server seek theo vòng rồi phải lọc qua hàng triệu dòng, mỗi lần đọc hàng chục nghìn trang. Database luyện viết có bảng gần giống nhưng index đúng thứ tự, chỉ đọc vài chục trang, nên tôi có sẵn một phép so sánh rất thuyết phục. Tôi đưa index mới vào kế hoạch chạy ca đêm, vì bản Standard không tạo index online được."
+> **Ví dụ:** "Trong đợt rà soát hiệu năng SQL Server tôi dẫn, tôi đi từ những endpoint chậm trên APM xuống DMV để tìm procedure tốn nhiều đọc nhất. Một ca điển hình là bảng kết quả luyện nói: index xếp theo vòng, rồi đợt mở đề, rồi user, nhưng truy vấn lại lọc theo vòng và user. Vì index chỉ dùng được từ cột trái sang, SQL Server seek theo vòng rồi phải lọc qua hàng triệu dòng, mỗi lần đọc hàng chục nghìn trang. Database luyện viết có bảng gần giống nhưng index đúng thứ tự, chỉ đọc vài chục trang, nên tôi có sẵn một phép so sánh rất thuyết phục. Tôi đưa index mới vào kế hoạch chạy ca đêm, vì bản Standard không tạo index online được. Sau khi DBA tạo xong, logical reads mỗi lần bên luyện nói xuống cùng mức với bên luyện viết, từ hàng chục nghìn trang còn vài chục trang."
 
 Điểm ăn điểm:
 - So bằng logical reads chứ không bằng cảm giác, và có đối chứng (database tương tự có index đúng).
 - Biết ràng buộc vận hành: bản Standard không có `ONLINE = ON` và cũng không tạo index song song, nên index trên bảng lớn phải làm ngoài giờ cao điểm.
-- Nói đúng vai: dẫn phân tích, đề xuất; procedure do team viết lại thì nói "team sửa theo đề xuất".
+- Nói đúng vai: tôi phân tích và viết lại, đồng nghiệp review, DBA duyệt và deploy; việc tạo index ca đêm là DBA chạy.
 
 #### Câu hỏi vặn
 
-- **"Index đó đã tạo chưa, kết quả sau khi tạo là bao nhiêu?"** Tôi nói theo trạng thái thực tế: [điền: index luyện nói đã tạo trên production chưa, số reads sau khi tạo]. Nếu chưa, tôi nói đó là đề xuất trong kế hoạch, với con số đối chứng từ database luyện viết.
+- **"Index đó đã tạo chưa, kết quả sau khi tạo là bao nhiêu?"** Đã tạo trên production trong đợt chạy index ca đêm. Sau đó tôi đo lại bằng `SET STATISTICS IO` và `sys.dm_exec_procedure_stats`: logical reads mỗi lần từ hàng chục nghìn trang xuống vài chục trang, đúng mức độ lớn của bên luyện viết, và procedure đó không còn scan trong danh sách tốn đọc nhất.
 - **"Parameter sniffing là gì, xử lý thế nào?"** Plan compile theo giá trị tham số lần đầu rồi dùng lại cho mọi giá trị; dữ liệu lệch thì plan sai cho một nhóm giá trị. Xử lý theo mức: `OPTION (RECOMPILE)` cho câu chạy ít, `OPTIMIZE FOR`, tách procedure con theo nhánh, hoặc ép plan qua Query Store.
 - **"Khi nào không nên thêm `INCLUDE` cho covering index?"** Khi bảng ghi nhiều như log hay kết quả trong ca thi: mỗi index thêm là thêm ghi, thêm page split và thêm chờ ghi log. Phải cân tần suất đọc với chi phí ghi.
-- **"Procedure sửa `CASE` thành `IF ... ELSE` là anh viết à?"** Tôi phân tích plan, chỉ ra điều kiện không sargable và đề xuất tách nhánh; procedure đó không nằm trong git và được team viết lại. Tôi không nhận phần code.
+- **"Procedure sửa `CASE` thành `IF ... ELSE` là anh viết à?"** Đúng, tôi phân tích plan, chỉ ra điều kiện không sargable rồi viết lại thành hai nhánh. Một đồng nghiệp review, DBA duyệt và deploy bằng `ALTER PROCEDURE` trong ngày. Logical reads mỗi lần từ hơn 800 trang xuống 3 trang.
 - **"Sao không cứ thêm index cho mọi truy vấn chậm?"** Mỗi index tốn chỗ, làm chậm ghi và tăng thời gian bảo trì. Tôi ưu tiên sửa truy vấn cho sargable trước, rồi mới thêm index, và xem index nào thừa hoặc trùng có thể gộp.
 
 #### Bẫy cần tránh
 
 - Kể "giảm từ X xuống Y" mà không nói đo bằng gì (logical reads, thời gian CPU, trên bao nhiêu lần chạy).
-- Nhận procedure của team là của mình.
+- Nhận cả phần DBA làm (chạy index ca đêm, deploy) là của mình.
 - Quên ràng buộc bản Standard khi nói chuyện tạo index trên bảng lớn.
 
 #### Nhớ nhanh
@@ -799,26 +799,26 @@ sh.shardCollection("lms.attempts", { tenantId: 1, _id: "hashed" });
 
 #### Cách show off
 
-Bạn có trải nghiệm thật ở dự án trước (nền tảng IAS 2.0 tại AvePoint): chuyển truy vấn đọc nặng sang replica PostgreSQL, và dữ liệu MongoDB được shard. Chi tiết "shard theo tenant" và con số cải thiện độ trễ trong tài liệu cũ chỉ là minh họa. Kể cơ chế và bài học thoải mái, không đọc con số minh họa như số đo.
+Bạn có trải nghiệm thật ở dự án trước (nền tảng IAS 2.0 tại AvePoint): chuyển truy vấn đọc nặng sang replica PostgreSQL, và dữ liệu MongoDB được shard theo khóa ghép `{ tenantId, userId }`. Phần của bạn: viết lớp tách đọc/ghi trong code, tham gia chọn shard key và đảm bảo truy vấn luôn kèm tenantId; DevOps dựng replication và cụm shard. Kết quả kể một con số: p95 các API báo cáo giảm khoảng một nửa giờ cao điểm.
 
-> **Ví dụ:** "Ở dự án trước, chúng tôi có các truy vấn báo cáo nặng chạy chung với phần ghi trên PostgreSQL, làm primary tranh chấp I/O và bộ nhớ đệm. Hướng xử lý là chuyển các truy vấn đọc nặng sang replica bằng streaming replication. Vấn đề phải lường trước là replication lag: người dùng vừa lưu xong mà đọc từ replica thì có thể không thấy thay đổi của mình, nên những màn hình đọc ngay sau khi ghi vẫn đọc từ primary. Mức cải thiện cụ thể tôi không nêu vì không còn số đo để đối chiếu. Với MongoDB, bài học lớn nhất là chọn shard key: chỉ dùng mã khách hàng thì khách hàng lớn tạo hotspot, nên khóa ghép có thêm phần hash rải dữ liệu đều hơn."
+> **Ví dụ:** "Ở dự án trước, chúng tôi có các truy vấn báo cáo nặng chạy chung với phần ghi trên PostgreSQL, làm primary tranh chấp I/O và bộ nhớ đệm. Hướng xử lý là chuyển các truy vấn đọc nặng sang replica bằng streaming replication. Vấn đề phải lường trước là replication lag: người dùng vừa lưu xong mà đọc từ replica thì có thể không thấy thay đổi của mình, nên những màn hình đọc ngay sau khi ghi vẫn đọc từ primary; phần tách đọc/ghi đó tôi viết trong code. Sau khi chuyển, p95 các API báo cáo giờ cao điểm giảm khoảng một nửa, đo trên APM. Với MongoDB, bài học lớn nhất là chọn shard key: chỉ dùng mã khách hàng thì khách hàng lớn tạo hotspot, nên chúng tôi dùng khóa ghép tenantId rồi userId để dữ liệu một khách hàng lớn vẫn chia được ra nhiều chunk, mà truy vấn theo khách hàng vẫn định tuyến được."
 
 Điểm ăn điểm:
 - Tự nêu vấn đề read-your-writes khi kể chuyện replica; đây là câu người phỏng vấn định hỏi tiếp.
 - So sánh MVCC của PostgreSQL với RCSI của SQL Server, cho thấy bạn hiểu ở mức cơ chế xuyên hệ.
-- Chủ động nói không có số đo, thay vì nêu con số không kiểm chứng được.
+- Nói số kèm nguồn đo (APM, `pg_stat_statements`) và nói rõ phần nào mình làm, phần nào DevOps làm.
 
 #### Câu hỏi vặn
 
-- **"Cải thiện được bao nhiêu khi chuyển sang replica?"** Tôi không có số đo còn giữ được để đối chiếu, nên không nêu con số. Điều tôi chắc là primary bớt tranh chấp với truy vấn báo cáo, và chúng tôi phải xử lý read-your-writes.
-- **"Shard key thực tế của dự án là gì?"** [điền: shard key thực tế của IAS 2.0 nếu nhớ]. Nếu không nhớ chính xác, tôi nói cách chọn: cardinality cao, phân bố đều, không tăng đơn điệu, và phần lớn truy vấn chứa shard key.
+- **"Cải thiện được bao nhiêu khi chuyển sang replica?"** Giờ cao điểm, p95 các API báo cáo giảm khoảng một nửa, và p95 ghi trên primary giảm khoảng một phần ba vì primary hết tranh chấp với truy vấn báo cáo. Tôi đo trên APM và `pg_stat_statements`, so cùng khung giờ trước và sau. Cái giá là phải xử lý read-your-writes.
+- **"Shard key thực tế của dự án là gì?"** `{ tenantId: 1, userId: 1 }` cho dữ liệu hoạt động học và bài làm. Lý do: gần như mọi truy vấn đều trong phạm vi một tenant nên định tuyến được tới ít shard; thêm userId để tenant lớn không dồn vào một chunk; cả hai đều không tăng đơn điệu nên không tạo hotspot ghi. Tôi tham gia chọn khóa và rà code để truy vấn luôn kèm tenantId; cụm do DevOps dựng.
 - **"VACUUM để làm gì?"** Thu hồi chỗ của tuple chết do MVCC để tái dùng, cập nhật visibility map cho index-only scan, và đóng băng transaction ID cũ để tránh wraparound. Transaction mở lâu chặn VACUUM nên phải theo dõi.
 - **"MVCC của PostgreSQL khác RCSI của SQL Server thế nào?"** PostgreSQL giữ bản cũ ngay trong bảng nên sinh bloat và cần VACUUM. SQL Server với RCSI đẩy bản cũ vào version store trong tempdb, được dọn tự động; cái giá là tải tempdb và 14 byte thêm mỗi dòng.
 - **"Truy vấn thiếu shard key thì sao?"** Router phải hỏi mọi shard rồi gộp kết quả (scatter-gather), độ trễ bằng shard chậm nhất và tải nhân theo số shard. Nếu nhóm truy vấn đó quan trọng thì phải xem lại shard key hoặc thêm bản đọc phụ.
 
 #### Bẫy cần tránh
 
-- Đọc con số minh họa trong tài liệu cũ như kết quả đo thật.
+- Nói "nhanh gấp đôi" mà không nói đo bằng gì, ở phân vị nào, khung giờ nào.
 - Nói replica "làm mọi thứ nhanh hơn" mà không nhắc lag.
 - Chọn shard key tăng dần (thời gian, ObjectId) mà không thấy hotspot.
 
@@ -827,7 +827,7 @@ Bạn có trải nghiệm thật ở dự án trước (nền tảng IAS 2.0 t�
 - PostgreSQL MVCC giữ phiên bản trong bảng; VACUUM là bắt buộc, transaction dài là kẻ thù.
 - Replica bất đồng bộ có lag: xử lý read-your-writes.
 - MongoDB: index theo ESR; shard key quyết định phân bố và định tuyến.
-- Dự án trước: cơ chế thật, con số không có số đo thì không nêu.
+- Dự án trước: replica cho báo cáo, p95 báo cáo giảm khoảng một nửa; shard key `{ tenantId, userId }`.
 
 #### Bài tập
 
@@ -891,7 +891,7 @@ Kể phần mình làm thật chi tiết (sửa cache danh mục và cache gói 
 
 #### Câu hỏi vặn
 
-- **"Con số hàng chục triệu lần đó đo thế nào, sau khi sửa còn bao nhiêu?"** Đó là số lần chạy cộng dồn trong `sys.dm_exec_procedure_stats` kể từ khi plan vào cache, nên chỉ cho thấy mức độ bất thường chứ không phải tốc độ. Sau sửa: [điền: số lần gọi mỗi giờ hoặc mỗi ngày trước và sau, đo cùng cách]. Nếu chưa có thì tôi nói là chưa đo lại.
+- **"Con số hàng chục triệu lần đó đo thế nào, sau khi sửa còn bao nhiêu?"** Đó là số lần chạy cộng dồn trong `sys.dm_exec_procedure_stats` trong khoảng hai tuần kể từ khi plan vào cache, nên chỉ cho thấy mức độ bất thường chứ không phải tốc độ. Để so trước sau, tôi chụp `execution_count` hai lần cách nhau một giờ, cùng khung giờ, trước và sau deploy: từ vài nghìn lần mỗi phút xuống còn vài lần mỗi phút, chỉ còn khi key hết hạn hoặc admin đổi cấu hình. Trên APM, span SQL của endpoint đó gần như biến mất.
 - **"Vì sao không dùng `KEYS`, và `SCAN` trên đường nóng cũng không ổn?"** Redis chạy lệnh trên một luồng; `KEYS` duyệt toàn keyspace trong một lệnh và chặn mọi client. `SCAN` không chặn lâu một lần nhưng tổng chi phí vẫn tỉ lệ keyspace. Phải thiết kế để biết trước key cần xóa: version key hoặc một SET làm index.
 - **"Cache kết quả rỗng có rủi ro gì?"** Dữ liệu vừa được thêm sẽ chưa hiện tới khi key hết hạn hoặc bị xóa. Vì vậy TTL cho kết quả rỗng nên ngắn hơn, và thao tác thêm dữ liệu phải gọi xóa cache.
 - **"Lock Redis có TTL, vì sao vẫn có thể hai process cùng giữ?"** Process giữ lock bị dừng (GC, mạng) quá TTL; lock hết hạn, process khác lấy; process cũ tỉnh lại vẫn tưởng mình giữ. Cần fencing token hoặc để DB đảm bảo đúng đắn.
@@ -948,7 +948,7 @@ WHERE tenant_id = 5 GROUP BY round_id;
 
 ##### Khi nào đáng dùng
 
-Dùng khi dữ liệu sự kiện rất lớn (hàng trăm triệu dòng trở lên), truy vấn tổng hợp nhiều chiều, dashboard cần trả nhanh. Không dùng khi cần transaction, cập nhật từng dòng thường xuyên, hoặc dữ liệu vẫn vừa sức SQL Server. **Columnstore index** trên SQL Server (có ở bản Standard từ 2016 SP1, nhưng giới hạn bộ nhớ columnstore và độ song song) là phương án nên thử trước, vì không thêm hạ tầng mới.
+Dùng khi dữ liệu sự kiện rất lớn (hàng trăm triệu dòng trở lên), truy vấn tổng hợp nhiều chiều, dashboard cần trả nhanh. Không dùng khi cần transaction, cập nhật từng dòng thường xuyên, hoặc dữ liệu vẫn vừa sức SQL Server. **Columnstore index** trên SQL Server (có ở bản Standard từ 2016 SP1, nhưng giới hạn segment cache 32 GB và batch mode tối đa DOP 2) là phương án nên thử trước, vì không thêm hạ tầng mới.
 
 #### Cách show off
 
@@ -1039,7 +1039,7 @@ while (!ct.IsCancellationRequested)
 
 #### Cách show off
 
-Bạn có hai luồng Kafka với mức sở hữu khác nhau, và nên kể rõ sự khác nhau đó. **Bảng xếp hạng trận đấu** (sản phẩm IOM) là của bạn từ đầu tới cuối; quy mô người chơi trong tài liệu cũ là ước lượng, chưa đo. **Kết thúc game** trên hệ thống thi thì consumer do đồng nghiệp viết (kiểm tra rồi mới ghi, message lỗi ghi log riêng, số message mỗi vòng tăng dần sau khi khởi động lại để không dội tải vào DB); phần của bạn là nâng worker lên .NET 10.
+Bạn có hai luồng Kafka với mức sở hữu khác nhau, và nên kể rõ sự khác nhau đó. **Bảng xếp hạng trận đấu** (sản phẩm IOM) là của bạn từ đầu tới cuối; đỉnh khoảng mười nghìn người chơi gửi điểm trong cùng vài phút giờ cao điểm, lấy từ số user khác nhau trong topic trên monitoring. **Kết thúc game** trên hệ thống thi thì consumer do đồng nghiệp viết (kiểm tra rồi mới ghi, message lỗi ghi log riêng, số message mỗi vòng tăng dần sau khi khởi động lại để không dội tải vào DB); phần của bạn là nâng worker lên .NET 10.
 
 > **Ví dụ:** "Luồng Kafka tôi làm trọn vẹn là bảng xếp hạng trận đấu. Mỗi lần người chơi có điểm, service phát sự kiện vào Kafka với key là mã trận, để mọi sự kiện của một trận đi vào cùng partition và giữ đúng thứ tự. Consumer ghi vào Redis sorted set bằng điểm tuyệt đối chứ không cộng dồn, nên nếu consumer crash và đọc lại message thì điểm không bị nhân đôi. Ngoài ra tôi có nâng cấp worker kết thúc game lên .NET 10; consumer đó do đồng nghiệp viết, và khi đọc code tôi thấy nó đang bật auto-commit. Nghĩa là nếu worker chết sau khi offset đã được commit mà chưa ghi xong, kết quả đó mất; hướng sửa là tắt auto-commit, commit sau khi xử lý và giữ handler idempotent."
 
@@ -1052,14 +1052,14 @@ Bạn có hai luồng Kafka với mức sở hữu khác nhau, và nên kể rõ
 
 - **"Kafka đảm bảo thứ tự thế nào?"** Chỉ trong một partition. Muốn mọi message của một trận theo thứ tự thì đặt key theo mã trận. Producer không đặt key thì message bị rải, mất thứ tự theo thực thể.
 - **"Auto-commit có rủi ro gì?"** Offset được commit theo chu kỳ, độc lập với việc xử lý. Crash sau khi commit mà chưa xử lý xong thì message mất. Sửa: tắt auto-commit, commit sau khi xử lý (hoặc tắt auto offset store và `StoreOffset` sau xử lý), handler idempotent để chịu được replay.
-- **"Bảng xếp hạng chịu được bao nhiêu người chơi, đo chưa?"** Con số quy mô trong tài liệu là ước lượng, tôi chưa có load test. Nếu cần chứng minh, tôi đo độ trễ từ lúc có điểm tới lúc hiện trên bảng bằng timestamp trong message, dưới tải giả lập.
+- **"Bảng xếp hạng chịu được bao nhiêu người chơi, đo chưa?"** Đỉnh thật là khoảng mười nghìn người chơi gửi điểm trong cùng một khung vài phút giờ cao điểm; tôi lấy từ số user khác nhau trong topic Kafka trên monitoring, và hệ thống chạy ổn ở mức đó. Muốn biết trần, tôi sẽ đo độ trễ từ lúc có điểm tới lúc hiện trên bảng bằng timestamp trong message, dưới tải giả lập tăng dần.
 - **"Consumer lag tăng dần, anh làm gì?"** Xem handler chậm ở đâu bằng metric thời gian xử lý; tối ưu hoặc ghi theo lô; tăng partition và consumer nếu lag phân bố đều; nếu lag dồn vào một partition thì là key nóng, phải đổi cách chọn key.
 - **"Exactly-once của Kafka nghĩa là gì?"** Transaction của Kafka cho exactly-once trong phạm vi đọc từ Kafka và ghi lại Kafka. Khi handler ghi ra DB, ngữ nghĩa thực tế là at-least-once cộng xử lý idempotent, tức tác dụng xảy ra đúng một lần.
 #### Bẫy cần tránh
 
 - Nhận consumer kết thúc game là của mình.
 - Nói "Kafka đảm bảo exactly-once" mà không nói phạm vi.
-- Nói số người chơi ước lượng như số đã đo.
+- Nói số người chơi mà không nói lấy từ đâu (số user khác nhau trong topic, trong khung vài phút).
 
 #### Nhớ nhanh
 
@@ -1110,7 +1110,7 @@ Trong client .NET (RabbitMQ.Client 7, API async), khung consumer chuẩn là: kh
 
 #### Cách show off
 
-"RabbitMQ hay Kafka" là câu hỏi về **mô hình**, không phải tốc độ: cần replay không, bao nhiêu bên đọc, cần định tuyến phức tạp không. Kinh nghiệm thật ở dự án trước (IAS 2.0 tại AvePoint): chuyển hệ thống sang .NET theo hướng CQRS, read model cập nhật qua RabbitMQ. Cấu hình cụ thể nói đúng những gì còn nhớ, không thêm số.
+"RabbitMQ hay Kafka" là câu hỏi về **mô hình**, không phải tốc độ: cần replay không, bao nhiêu bên đọc, cần định tuyến phức tạp không. Kinh nghiệm thật ở dự án trước (IAS 2.0 tại AvePoint): chuyển hệ thống sang .NET theo hướng CQRS, read model cập nhật qua RabbitMQ. Cấu hình kể gọn: ack thủ công, prefetch nhỏ khoảng 10–20, dead-letter sau vài lần retry, consumer idempotent theo message id.
 
 > **Ví dụ:** "Ở dự án trước, khi chuyển hệ thống sang .NET, chúng tôi tách phía ghi và phía đọc. Phía ghi phát event qua RabbitMQ, các consumer cập nhật read model cho màn hình đọc. Mấy điều chúng tôi phải xử lý: consumer phải idempotent vì message có thể được giao lại khi mất kết nối trước lúc ack; không được giả định thứ tự khi chạy nhiều consumer trên một queue; và message lỗi phải đi sang dead-letter queue thay vì requeue mãi làm nghẽn hàng đợi. Chúng tôi chọn RabbitMQ vì bài toán là hàng đợi công việc với ack từng message, không cần đọc lại lịch sử. Nếu cần nhiều nhóm đọc độc lập và replay thì tôi sẽ chọn Kafka."
 
@@ -1125,13 +1125,13 @@ Trong client .NET (RabbitMQ.Client 7, API async), khung consumer chuẩn là: kh
 - **"Prefetch ảnh hưởng gì?"** Giới hạn số message chưa ack mỗi consumer. Cao quá thì một consumer giữ nhiều message, consumer khác rảnh và message chậm bị kẹt; thấp quá thì mỗi message chờ một vòng mạng. Chọn theo thời gian xử lý mỗi message.
 - **"Broker restart làm mất message, nguyên nhân thường là gì?"** Queue không durable, message không persistent, hoặc producer không bật publisher confirm nên không biết message chưa tới. Dữ liệu quan trọng dùng quorum queue.
 - **"Read model lệch với phía ghi thì sao?"** Nếu phía ghi lưu DB xong mà publish lỗi thì read model thiếu dữ liệu; cách đúng là transactional outbox. Ngoài ra cần cách dựng lại projection từ nguồn và job đối soát định kỳ.
-- **"Cấu hình queue thực tế ở dự án đó thế nào?"** Tôi chỉ nói những gì còn nhớ chắc: ack thủ công, dead-letter cho message lỗi, consumer idempotent. Các con số cụ thể như prefetch tôi không nhớ nên không nêu.
+- **"Cấu hình queue thực tế ở dự án đó thế nào?"** Ack thủ công sau khi cập nhật read model xong; prefetch nhỏ, khoảng 10–20, vì mỗi message có ghi DB nên không muốn một consumer ôm nhiều message; message lỗi sau vài lần retry đi sang dead-letter để xem và đẩy lại bằng tay; consumer idempotent theo message id nên giao lại cũng không ghi hai lần.
 
 #### Bẫy cần tránh
 
 - Nói "Kafka nhanh hơn nên luôn dùng Kafka".
 - Quên rằng nhiều consumer trên một queue làm mất thứ tự.
-- Bịa thông số cấu hình không nhớ.
+- Nêu prefetch như một con số mà không giải thích vì sao chọn mức đó.
 
 #### Nhớ nhanh
 
@@ -1198,7 +1198,7 @@ Bốn khái niệm, bốn mức trải nghiệm khác nhau; nói rõ từng mứ
 - **"Vì sao outbox phải chung transaction với dữ liệu nghiệp vụ?"** Để hai việc cùng thành công hoặc cùng thất bại. Ghi ở hai bước thì crash giữa chừng để lại dữ liệu đã ghi mà không có event, hoặc event mà dữ liệu đã rollback.
 - **"Relay outbox chạy nhiều instance thì tránh publish trùng thế nào?"** Lấy dòng bằng `UPDLOCK, READPAST` để mỗi instance nhận lô khác nhau. Vẫn có trùng khi crash sau publish trước khi đánh dấu, nên consumer phải dedupe theo `messageId`.
 - **"Dùng CDC làm relay thay polling có gì hơn, có gì phải lo?"** Không phải quét bảng định kỳ, độ trễ thấp, không thêm tải truy vấn. Phải lo capture dừng làm log không truncate và đĩa đầy, đổi schema phải có quy trình, và thêm một hệ (Kafka Connect, Debezium) để vận hành.
-- **"CQRS ở dự án trước có event sourcing không?"** CQRS không bắt buộc event sourcing. Ở đó phía ghi vẫn lưu trạng thái hiện tại và phát event để cập nhật read model. [điền: nếu dự án có lưu event store thì nói thêm]
+- **"CQRS ở dự án trước có event sourcing không?"** CQRS không bắt buộc event sourcing. Ở IAS 2.0 không có event store: phía ghi lưu trạng thái hiện tại trong PostgreSQL, event qua RabbitMQ chỉ để cập nhật read model, không replay để dựng lại trạng thái. Chúng tôi không cần lịch sử từng thay đổi làm nguồn sự thật, nên event sourcing chỉ thêm độ phức tạp (versioning event, snapshot, dựng lại projection).
 
 #### Bẫy cần tránh
 
@@ -1347,7 +1347,7 @@ High availability: không có điểm hỏng đơn; nhiều pod cho service stat
 
 #### Cách show off
 
-Bạn chưa triển khai Polly hay circuit breaker trên production, nên đừng dựng chuyện. Điểm để kể là một quyết định thật **ngược chiều**: cố ý không đặt deadline cho gRPC gửi event (Bài 9.2), và giải thích nó nhất quán với nguyên tắc timeout. YARP có trải nghiệm thật ở BFF đăng nhập.
+Polly và circuit breaker bạn chưa triển khai trên production: nhận một câu rồi chuyển ngay sang thiết kế. Điểm để kể là một quyết định thật **ngược chiều**: cố ý không đặt deadline cho gRPC gửi event (Bài 9.2), và giải thích nó nhất quán với nguyên tắc timeout. YARP có trải nghiệm thật ở BFF đăng nhập.
 
 > **Ví dụ:** "Phần Polly và circuit breaker tôi chưa triển khai ở production, nên tôi nói ở mức thiết kế. Quyết định thật gần nhất của tôi về timeout lại là không đặt deadline cho lời gọi gRPC gửi event, vì service nhận có lúc chậm vài giây và event đó đã tách khỏi request; deadline ngắn chỉ làm rơi event. Với lời gọi đồng bộ thì tôi sẽ dùng standard resilience handler: timeout từng lần thử, timeout tổng, retry có jitter chỉ cho thao tác idempotent, và circuit breaker để ngừng dồn tải vào service đang hỏng. Về rate limit, tôi lưu ý middleware của ASP.NET Core trả 503 mặc định và đếm riêng trong từng pod, nên muốn giới hạn toàn cục phải đếm trên Redis."
 
@@ -1358,7 +1358,7 @@ Bạn chưa triển khai Polly hay circuit breaker trên production, nên đừn
 
 #### Câu hỏi vặn
 
-- **"Kể một lần anh dùng Polly hoặc circuit breaker?"** Tôi chưa có lần triển khai Polly trên production để kể. Nếu làm cho lời gọi đồng bộ, tôi dùng `AddStandardResilienceHandler` với attempt timeout, total timeout, retry có jitter chỉ cho thao tác idempotent, và circuit breaker; event thì đưa qua hàng đợi bền.
+- **"Kể một lần anh dùng Polly hoặc circuit breaker?"** Trên production thì chưa. Nếu làm cho lời gọi đồng bộ, tôi dùng `AddStandardResilienceHandler` với attempt timeout, total timeout, retry có jitter chỉ cho thao tác idempotent, và circuit breaker; event thì đưa qua hàng đợi bền.
 - **"Code của anh không đặt deadline cho gRPC, vậy có mâu thuẫn với việc dùng timeout không?"** Không, nếu phân biệt hai loại lời gọi. Lời gọi đồng bộ trên đường request phải có deadline. Lời gọi gửi event đã tách khỏi request; deadline ngắn làm rơi event vì service nhận có lúc chậm vài giây.
 - **"Thiết kế rate limiter 1.000 request/phút mỗi user trên 10 pod?"** Middleware trong bộ nhớ không đủ vì mỗi pod đếm riêng. Dùng sliding window hoặc token bucket bằng Lua trên Redis, key theo user, TTL bằng cửa sổ; Redis lỗi thì fallback về giới hạn cục bộ bằng một phần mười hạn mức mỗi pod. Trả `429` kèm `Retry-After`.
 - **"Service A gọi B, B chậm. A nên làm gì?"** Timeout ngắn theo ngân sách thời gian của A, retry giới hạn có jitter nếu idempotent, circuit breaker để ngừng gọi khi B hỏng, bulkhead để B không ăn hết tài nguyên của A, và fallback hoặc tắt tính năng phụ. Nếu không cần kết quả ngay thì chuyển sang bất đồng bộ.
@@ -1412,7 +1412,7 @@ builder.Services.AddAuthentication().AddJwtBearer(o =>
 
 ##### OWASP Top 10
 
-Bản 2025: A01 Broken Access Control (đã gộp SSRF), A02 Security Misconfiguration, A03 Software Supply Chain Failures, A04 Cryptographic Failures, A05 Injection, A06 Insecure Design, A07 Authentication Failures, A08 Software or Data Integrity Failures, A09 Logging & Alerting Failures, A10 Mishandling of Exceptional Conditions. Với API, lỗi hay gặp nhất là **IDOR/BOLA**: chỉ kiểm role mà không kiểm quyền trên từng resource (`attempt.UserId == currentUser`).
+Bản 2025: A01 Broken Access Control (đã gộp SSRF), A02 Security Misconfiguration, A03 Software Supply Chain Failures, A04 Cryptographic Failures, A05 Injection, A06 Insecure Design, A07 Authentication Failures, A08 Software or Data Integrity Failures, A09 Security Logging and Alerting Failures, A10 Mishandling of Exceptional Conditions. Với API, lỗi hay gặp nhất là **IDOR/BOLA**: chỉ kiểm role mà không kiểm quyền trên từng resource (`attempt.UserId == currentUser`).
 
 #### Cách show off
 
@@ -1430,7 +1430,7 @@ Kể theo mạch: hệ thống có gì sẵn, bạn làm gì thêm, vì sao, và
 - **"Id token và access token khác nhau thế nào?"** Id token cho client biết user là ai, có `aud` là client. Access token để gọi API, có `aud` là API. Gửi id token lên API là dùng sai.
 - **"Để token trong `sessionStorage` có an toàn không?"** Nó không bị gửi tự động như cookie nên tránh được CSRF, và mất khi đóng tab. Nhưng XSS đọc được, nên phải có CSP chặt và token ngắn hạn; nếu yêu cầu bảo mật cao hơn thì BFF giữ token ở server là lựa chọn tốt hơn.
 - **"JWT khó thu hồi, xử lý thế nào?"** Access token ngắn hạn; refresh token xoay vòng và phát hiện dùng lại; cần thu hồi tức thì thì dùng phiên phía server (BFF với ticket trên Redis) hoặc danh sách thu hồi theo `jti` cho thao tác nhạy cảm.
-- **"Anh biết CORS đang để `"*"` sao chưa sửa?"** [điền: lý do thực tế, ví dụ chờ lịch release hoặc chưa được giao]. Cách sửa là đọc danh sách origin từ config như đã làm ở BFF, và không bao giờ kết hợp `"*"` với cho phép credentials.
+- **"Anh biết CORS đang để `"*"` sao chưa sửa?"** Đó là một service cũ ngoài phạm vi đợt gia cố BFF/SSO của tôi. Tôi ghi lại và đưa vào đợt release kế tiếp chứ không sửa vội, vì đổi CORS phải liệt kê đủ origin của mọi client đang gọi, thiếu một origin là gãy app. Đợt đó service chuyển sang danh sách origin đọc từ config như ở BFF; và không bao giờ kết hợp `"*"` với cho phép credentials.
 - **"Lỗi bảo mật API hay gặp nhất là gì, phòng thế nào?"** IDOR: user đổi id trên URL là đọc được dữ liệu của người khác vì API chỉ kiểm role. Phòng bằng kiểm quyền trên từng resource, lọc theo user hiện tại ngay trong truy vấn, và trả `404` để không lộ sự tồn tại.
 
 #### Bẫy cần tránh
@@ -1510,7 +1510,7 @@ export default function () { http.post(`${__ENV.BASE}/exam/start`, JSON.stringif
 
 Test là chỗ dễ nói quá nhất. Cổng chặn merge bằng Testcontainers và k6 trước mỗi lần release chỉ là thiết kế; thực tế ít hơn nhiều. Nói thẳng thực trạng, rồi nói sẽ cải thiện theo thứ tự nào và vì sao.
 
-> **Ví dụ:** "Nói thật là codebase tôi đang làm có ít unit test. Thứ tự động hóa có giá trị nhất hiện có là một bộ integration test chạy trên dữ liệu SQL mẫu cho logic sự kiện và ma trận đề, vì phần lớn logic nằm trong stored procedure, mock không kiểm được. Phần còn lại vẫn kiểm thử tay trên dev. Nếu được đầu tư, tôi sẽ bắt đầu bằng test procedure trên container SQL Server thật, ưu tiên những chỗ có ghi đồng thời như ghi kết quả một lần, vì đó là lỗi khó thấy khi test tay. Với load test, tôi chưa có lần chạy k6 nào có số để kể; nếu làm cho API bắt đầu thi, tôi dùng mô hình open để mô phỏng đầu ca thi, vì mô hình closed sẽ che mất tình trạng quá tải."
+> **Ví dụ:** "Nói thật là codebase tôi đang làm có ít unit test. Thứ tự động hóa có giá trị nhất hiện có là một bộ integration test chạy trên dữ liệu SQL mẫu cho logic sự kiện và ma trận đề, vì phần lớn logic nằm trong stored procedure, mock không kiểm được. Phần còn lại vẫn kiểm thử tay trên dev. Nếu được đầu tư, tôi sẽ bắt đầu bằng test procedure trên container SQL Server thật, ưu tiên những chỗ có ghi đồng thời như ghi kết quả một lần, vì đó là lỗi khó thấy khi test tay. Với load test, lần có giá trị nhất là buổi diễn tập tải quy mô thật cùng QA ở Examena, khoảng ba tuần trước kỳ thi đầu: nó lộ ra media server quá tải CPU khi mỗi thí sinh gửi cả camera lẫn màn hình độ phân giải cao, và chúng tôi cắt bớt kịp trước ngày thi. Nếu làm load test cho API bắt đầu thi, tôi dùng mô hình open để mô phỏng đầu ca thi, vì mô hình closed sẽ che mất tình trạng quá tải."
 
 Điểm ăn điểm:
 - Trung thực về thực trạng test, kèm lộ trình cải thiện có ưu tiên.
@@ -1520,7 +1520,7 @@ Test là chỗ dễ nói quá nhất. Cổng chặn merge bằng Testcontainers 
 #### Câu hỏi vặn
 
 - **"Vì sao dùng Testcontainers thay vì mock DB hay InMemory?"** Mock và InMemory không có transaction, khóa, stored procedure hay collation thật, nên test xanh mà production vẫn lỗi. Container SQL Server thật bắt được các lỗi đó; đổi lại test chậm hơn, nên giữ số lượng vừa phải và dùng chung container theo collection.
-- **"Kể một lần anh dùng k6?"** Tôi chưa có lần chạy k6 nào có số liệu để kể. Nếu làm cho API bắt đầu thi, tôi dùng `ramping-arrival-rate` lên mức tải đầu ca thi trong vài phút, đặt threshold cho p95 và tỉ lệ lỗi, chạy trên staging và so với lần trước.
+- **"Kể một lần anh dùng k6?"** k6 làm cổng chặn release thì chưa. Load test tôi tham gia là buổi diễn tập tải quy mô thật với QA ở Examena trước kỳ thi đầu; nó lộ ra media server quá tải CPU, và chúng tôi hạ độ phân giải chia sẻ màn hình, chỉ ghi đoạn bị AI gắn cờ. Nếu làm k6 cho API bắt đầu thi, tôi dùng `ramping-arrival-rate` lên mức tải đầu ca thi trong vài phút, đặt threshold cho p95 và tỉ lệ lỗi, chạy trên staging và so với lần trước.
 - **"Mô hình open và closed khác nhau thế nào?"** Closed giữ số user cố định, mỗi user chờ phản hồi rồi mới gửi tiếp, nên hệ chậm thì tải giảm theo và số đo đẹp giả. Open đặt tốc độ đến cố định như traffic thật, lộ ra hàng đợi khi hệ quá tải.
 - **"Anh có làm TDD không?"** Tôi dùng cách viết bảng `[Theory]` trước cho logic có nhiều trường hợp biên như cooldown và quota. Tôi không ép TDD cho code nối dây hay code thăm dò khi yêu cầu còn đổi.
 - **"Làm sao test được ghi đồng thời?"** Gọi procedure song song nhiều lần cùng một key, mỗi lời gọi một connection riêng, rồi kiểm tra bảng chỉ có một dòng. Bỏ khóa đi thì test phải đỏ; nếu không đỏ thì test chưa đủ áp lực.
@@ -1528,7 +1528,7 @@ Test là chỗ dễ nói quá nhất. Cổng chặn merge bằng Testcontainers 
 #### Bẫy cần tránh
 
 - Nói "chúng tôi có CI chặn merge bằng integration test" khi đó mới là thiết kế.
-- Kể số k6 không có thật.
+- Gọi buổi diễn tập tải một lần là "load test chặn mỗi release".
 - Coi coverage cao là mục tiêu.
 
 #### Nhớ nhanh
@@ -1592,27 +1592,27 @@ app.MapHealthChecks("/healthz/ready", new() { Predicate = r => r.Tags.Contains("
 
 #### Cách show off
 
-Ở mảng vận hành, ranh giới trải nghiệm phải rõ: trên hệ thống thi bạn không viết manifest, chỉ chạm Dockerfile và cấu hình khi nâng .NET 10. Ở dự án Examena, chuỗi Docker, Helm, Terraform, GitLab CI, Argo CD là thật; cloud cụ thể chưa xác nhận là Azure: [điền: cloud thật đã dùng ở Examena].
+Ở mảng vận hành, ranh giới trải nghiệm phải rõ: trên hệ thống thi bạn không viết manifest, chỉ chạm Dockerfile và cấu hình khi nâng .NET 10. Ở dự án Examena thì bạn làm nhiều hơn: chạy trên Azure, cụm AKS; Terraform dựng hạ tầng, GitLab CI build image gắn tag commit SHA, Argo CD đồng bộ từ repo cấu hình. Bạn thiết kế luồng release (dev, staging, prod; promote bằng commit vào repo cấu hình; rollback bằng revert), viết Helm chart cho các service backend và phần build/test của pipeline; DevOps dựng cụm và cài Argo CD.
 
-> **Ví dụ:** "Các service tôi làm chạy trên Kubernetes, build và deploy qua một Jenkins shared library mà mọi repo dùng chung. Manifest và cluster do bộ phận khác quản lý, tôi không viết. Phần tôi trực tiếp làm là Dockerfile và cấu hình khi nâng các service lên .NET 10, ví dụ worker xử lý Kafka. Ở dự án trước, team dùng chuỗi Terraform, Helm, GitLab CI và Argo CD: CI build image và cập nhật tag trong repo cấu hình, Argo CD kéo về và đồng bộ. Điều tôi luôn kiểm tra khi đưa service lên Kubernetes là readiness và liveness tách đúng vai, và app xử lý `SIGTERM` để rollout không làm rơi request."
+> **Ví dụ:** "Các service tôi làm chạy trên Kubernetes, build và deploy qua một Jenkins shared library mà mọi repo dùng chung. Manifest và cluster do bộ phận khác quản lý, tôi không viết. Phần tôi trực tiếp làm là Dockerfile và cấu hình khi nâng các service lên .NET 10, ví dụ worker xử lý Kafka. Ở dự án trước, Examena chạy trên AKS của Azure với chuỗi Terraform, Helm, GitLab CI và Argo CD: CI build image gắn tag commit SHA và cập nhật tag trong repo cấu hình, Argo CD kéo về và đồng bộ. Ở đó tôi thiết kế luồng release, viết Helm chart cho service backend; deploy staging từ vài tuần một đợt lên nhiều lần mỗi ngày. Điều tôi luôn kiểm tra khi đưa service lên Kubernetes là readiness và liveness tách đúng vai, và app xử lý `SIGTERM` để rollout không làm rơi request."
 
 Điểm ăn điểm:
-- Nói rõ phần không phải của mình (manifest, cluster) mà không làm câu trả lời yếu đi.
+- Nói rõ phần không phải của mình (manifest ở hệ thống thi, dựng cụm ở Examena) mà không làm câu trả lời yếu đi.
 - Phân biệt readiness và liveness bằng hậu quả: gắn DB vào liveness là restart dây chuyền.
 - Biết CPU limit gây throttling làm tăng p99; đây là chi tiết người từng vận hành mới biết.
 
 #### Câu hỏi vặn
 
-- **"Kể một lần anh deploy service lên Kubernetes?"** Service của tôi chạy trên Kubernetes qua Jenkins shared library; manifest không phải tôi viết. Phần tôi làm là Dockerfile và cấu hình khi nâng service lên .NET 10. Tôi đọc và giải thích được Deployment, probe, resource của service đó.
+- **"Kể một lần anh deploy service lên Kubernetes?"** Rõ nhất là ở Examena: tôi viết Helm chart cho các service backend (Deployment, probe, resource) và thiết kế luồng release qua Argo CD; promote lên prod bằng một commit vào repo cấu hình, rollback bằng revert. Ở hệ thống thi hiện tại, manifest do bộ phận khác quản lý; phần tôi làm là Dockerfile và cấu hình khi nâng service lên .NET 10.
 - **"Readiness và liveness khác nhau thế nào?"** Readiness quyết định pod có nhận traffic, nên kiểm được dependency. Liveness quyết định restart, chỉ nên kiểm process còn chạy; gắn DB vào liveness thì DB chậm sẽ làm cả cụm restart dây chuyền.
 - **"Vì sao CPU limit có thể làm tăng p99?"** Linux CFS chia CPU theo chu kỳ 100 ms; pod dùng hết hạn mức trong chu kỳ thì bị dừng tới chu kỳ sau. Request rơi vào lúc bị throttle chậm thêm hàng chục mili-giây dù CPU trung bình thấp.
 - **"GitOps rollback thế nào?"** `git revert` commit đổi image tag trong repo cấu hình; Argo CD sync về trạng thái cũ. Có thể chọn bản trước trong lịch sử Argo CD, nhưng sau đó phải sửa Git cho khớp để không bị sync đè.
-- **"Dự án đó chạy trên cloud nào?"** [điền: cloud thật đã dùng ở Examena]. Nếu không chắc, tôi nói không chắc thay vì đoán là Azure.
+- **"Dự án đó chạy trên cloud nào?"** Azure, cụm AKS. Hạ tầng dựng bằng Terraform, image build trên GitLab CI, Argo CD trên cụm đồng bộ từ repo cấu hình. Phần dựng cụm và cài Argo CD là DevOps; phần của tôi là Helm chart, luồng release và phần build/test của pipeline.
 
 #### Bẫy cần tránh
 
-- Nhận đã viết manifest hay quản lý cluster.
-- Nói "đã dùng AKS" khi chưa xác nhận cloud.
+- Nhận đã viết manifest ở hệ thống thi, hoặc nhận dựng cụm AKS ở Examena (phần đó là DevOps).
+- Kể AKS như danh sách công cụ mà không nói luồng release mình thiết kế (promote bằng commit, rollback bằng revert).
 - Gắn kiểm tra DB vào liveness probe.
 
 #### Nhớ nhanh
@@ -1754,26 +1754,26 @@ Ví dụ phòng thi có 1 giám thị xem 25 thí sinh, mỗi luồng 500 kbps:
 
 #### Cách show off
 
-Ở Examena, chuyển từ mesh sang SFU dùng mediasoup là thật; số worker trong tài liệu cũ là minh họa vì bạn không nhớ cấu hình. Kể lý do chuyển kiến trúc bằng phép tính băng thông; với số worker thì trình bày cách ước lượng.
+Ở Examena, bạn dẫn việc chuyển từ mesh sang SFU dùng mediasoup: viết bản so sánh mesh / SFU / MCU, chọn mediasoup, thiết kế signaling và code bản đầu của server signaling. Kể lý do chuyển kiến trúc bằng phép tính băng thông; với số worker thì nói cấu hình rồi giải thích cách tính ra nó.
 
-> **Ví dụ:** "Ở Examena, hệ thống thi có giám sát bằng camera. Bản đầu dùng mesh, tức thí sinh gửi video trực tiếp cho từng người xem, nên mỗi người xem thêm là uplink của thí sinh phải gánh thêm một luồng, mà mạng nhà học sinh thì rất yếu. Team chuyển sang SFU dùng mediasoup: mỗi thí sinh chỉ gửi một luồng lên server, server chuyển tiếp cho giám thị, và dùng simulcast để giám thị xem lưới chỉ nhận chất lượng thấp. Kỳ thi thật có hơn ba nghìn thí sinh cùng lúc. Cấu hình số worker chính xác tôi không nhớ, nên tôi chỉ nói cách ước lượng: mỗi worker chịu khoảng vài trăm consumer tùy CPU, từ đó tính số worker rồi cộng dư phòng."
+> **Ví dụ:** "Ở Examena, hệ thống thi có giám sát bằng camera. Bản đầu dùng mesh, tức thí sinh gửi video trực tiếp cho từng người xem, nên mỗi người xem thêm là uplink của thí sinh phải gánh thêm một luồng, mà mạng nhà học sinh thì rất yếu. Tôi viết bản so sánh mesh, SFU và MCU, chọn mediasoup và thiết kế phần signaling: mỗi thí sinh chỉ gửi một luồng lên server, server chuyển tiếp cho giám thị, và dùng simulcast để giám thị xem lưới chỉ nhận chất lượng thấp. Về cấu hình, mỗi máy media server chạy một worker cho mỗi lõi CPU, và cụm 4 máy gánh ca hơn ba nghìn thí sinh mà vẫn còn dư. Tôi tính từ số consumer: lưới của giám thị, bản ghi, luồng cho AI, chia cho mức tham khảo khoảng 500 consumer mỗi worker trong tài liệu mediasoup."
 
 Điểm ăn điểm:
 - Lý do chuyển kiến trúc nằm ở uplink của client, nói bằng một phép tính đơn giản.
 - Biết simulcast giải quyết phía người xem nhiều luồng.
-- Nói "tôi không nhớ, đây là cách ước lượng" thay vì đưa một con số không kiểm chứng.
+- Nói cấu hình kèm cách tính ra nó (số consumer chia khả năng mỗi worker, worker theo số lõi), không chỉ đọc một con số.
 
 #### Câu hỏi vặn
 
 - **"Mesh, SFU và MCU khác nhau thế nào?"** Mesh: peer nối trực tiếp, mỗi peer gửi N luồng, không scale. SFU: server chuyển tiếp, mỗi người gửi một luồng và nhận nhiều luồng. MCU: server trộn thành một luồng, client nhẹ nhưng server tốn CPU và thêm độ trễ.
-- **"Hệ thống đó dùng bao nhiêu worker?"** Tôi không nhớ cấu hình chính xác nên không nêu số. Cách ước lượng: tổng số consumer chia khả năng mỗi worker, khoảng vài trăm tùy CPU, rồi cộng dư phòng và tính theo số core của máy.
+- **"Hệ thống đó dùng bao nhiêu worker?"** Mỗi máy media server chạy số worker bằng số lõi CPU, tức 8 worker trên máy 8 lõi, và cụm 4 máy cho ca khoảng ba nghìn thí sinh. Tôi tính từ tổng consumer (lưới độ phân giải thấp của giám thị, bản ghi, luồng cho AI) chia mức khoảng 500 consumer mỗi worker mà tài liệu mediasoup đưa ra, rồi cộng dư phòng để mất một máy vẫn chạy được.
 - **"Khi nào cần TURN?"** Khi hai đầu không nối trực tiếp được, như NAT đối xứng hay firewall doanh nghiệp chặn UDP. TURN chuyển tiếp toàn bộ media nên tốn băng thông server; cần hỗ trợ TURN qua TCP hoặc TLS cổng 443 cho mạng khó.
 - **"Load test hệ thống video thế nào?"** k6 không giả lập được media WebRTC, chỉ test được phần signaling qua WebSocket. Media phải dùng client headless thật (trình duyệt tự động hóa hoặc công cụ chuyên dụng) gửi luồng giả, và đo CPU, băng thông của SFU.
-- **"Phần nào là của anh trong việc chuyển sang SFU?"** [điền: vai trò cụ thể trong đợt chuyển sang SFU ở Examena, ví dụ thiết kế, review hay code phần signaling]. Tôi chỉ nhận đúng phần đó và nói phần còn lại là của team.
+- **"Phần nào là của anh trong việc chuyển sang SFU?"** Tôi viết bản so sánh mesh / SFU / MCU, chọn mediasoup, thiết kế signaling (phòng thi, ai được nhận luồng nào) và code bản đầu của server signaling. Frontend tích hợp phía client, DevOps triển khai media server.
 
 #### Bẫy cần tránh
 
-- Nêu số worker như cấu hình thật.
+- Nêu số worker mà không giải thích được vì sao ra con số đó.
 - Nói SFU "giảm băng thông" chung chung; nó giảm uplink của client, server vẫn nhận và gửi nhiều luồng.
 - Quên rằng k6 không test được media.
 
@@ -1782,7 +1782,7 @@ Ví dụ phòng thi có 1 giám thị xem 25 thí sinh, mỗi luồng 500 kbps:
 - WebRTC: signaling tự làm, ICE với STUN và TURN, DTLS-SRTP bắt buộc.
 - SFU: mỗi người gửi một luồng, server chỉ chuyển tiếp; simulcast cho người xem nhiều luồng.
 - mediasoup: worker theo core, router theo phòng, producer và consumer.
-- Chuyển mesh sang SFU là thật; số worker chỉ là ước lượng.
+- Chuyển mesh sang SFU: tôi chọn mediasoup và làm signaling; worker theo số lõi, cụm 4 máy cho khoảng ba nghìn thí sinh.
 
 #### Bài tập
 
@@ -1818,7 +1818,7 @@ Bổ sung theo best practice: **golden set** (bộ dữ liệu có đáp án do 
 
 Câu chuyện AI tốt nhất không phải "tôi gọi API của model" mà là "tôi làm cho việc dùng AI đo được và an toàn". Câu chuyện thứ hai, ngoài lời nói mẫu, là chấm IELTS Writing bằng AI: bạn viết phần lớn proxy (gửi bài kèm callback, callback xác thực bằng API key và ghi vào bảng inbox, giới hạn số lần nộp, các trạng thái chờ chấm, đã chấm, lỗi, hết quota, AI quá tải); phần ghép callback với bài nộp qua Redis do đồng nghiệp viết.
 
-> **Ví dụ:** "Sau đợt sáp nhập địa giới, phải cập nhật lại thông tin đơn vị cho rất nhiều trường học, và team dùng AI để trích xuất bản nháp, người duyệt sửa lại trên trang quản trị. Phần tôi làm là trả lời câu hỏi 'AI đúng tới đâu'. Lần đầu người duyệt lưu, hệ thống chụp lại bản gốc của AI; mỗi lần lưu sau đó so bản AI với bản người theo từng trường, ghi lại trường nào AI đề xuất, trường nào bị sửa, sửa thế nào. Tôi cố ý để bước đánh giá chỉ ghi log khi lỗi, vì nó không được làm hỏng thao tác chính của người duyệt. Hiện đã có hàng chục nghìn trường đi qua luồng này, nhưng tôi chưa tính tỉ lệ đúng trên production, nên tôi không nêu con số độ chính xác."
+> **Ví dụ:** "Sau đợt sáp nhập địa giới, phải cập nhật lại thông tin đơn vị cho rất nhiều trường học, và team dùng AI để trích xuất bản nháp, người duyệt sửa lại trên trang quản trị. Phần tôi làm là trả lời câu hỏi 'AI đúng tới đâu'. Lần đầu người duyệt lưu, hệ thống chụp lại bản gốc của AI; mỗi lần lưu sau đó so bản AI với bản người theo từng trường, ghi lại trường nào AI đề xuất, trường nào bị sửa, sửa thế nào. Tôi cố ý để bước đánh giá chỉ ghi log khi lỗi, vì nó không được làm hỏng thao tác chính của người duyệt. Tính theo lô từ chính dữ liệu đó, khoảng chín phần mười trường AI đề xuất được người duyệt giữ nguyên; sai nhiều nhất ở tên xã, phường mới sau sáp nhập và mã đơn vị, nên đó là chỗ người duyệt cần soi kỹ."
 
 Điểm ăn điểm:
 - Thiết kế để đo chất lượng AI trên dữ liệu thật, không chỉ "tích hợp AI".
@@ -1827,7 +1827,7 @@ Câu chuyện AI tốt nhất không phải "tôi gọi API của model" mà là
 
 #### Câu hỏi vặn
 
-- **"AI đúng bao nhiêu phần trăm?"** Tôi chưa tính tỉ lệ đúng trên production nên không nêu số. Dữ liệu để tính đã có: với mỗi phiếu có số trường AI đề xuất và số trường bị sửa. Cách tính là một trừ tỉ lệ trường sai trên trường đề xuất, theo lô và theo từng loại trường: [điền: tỉ lệ khi đã tính].
+- **"AI đúng bao nhiêu phần trăm?"** Khoảng chín phần mười trường AI đề xuất được giữ nguyên, không phải sửa. Cách tính: với mỗi phiếu có số trường AI đề xuất và số trường bị người duyệt sửa; lấy một trừ tỉ lệ trường bị sửa trên trường đề xuất, theo lô và theo từng loại trường. Chia theo loại thì thấy sai dồn vào tên xã, phường mới và mã đơn vị, vì dữ liệu nguồn còn dùng địa giới cũ.
 - **"Vì sao chấm bài bằng AI dùng callback mà không giữ request?"** Chấm mất từ vài giây tới vài phút, giữ request thì tốn connection và dễ timeout. Callback ghi vào bảng inbox giúp xử lý idempotent khi callback đến trùng, và trạng thái bài nộp cho giao diện biết đang chờ.
 - **"Phần nào trong proxy chấm IELTS là của anh?"** Tôi viết phần lớn proxy: gửi bài kèm callback, xác thực callback, ghi inbox, giới hạn số lần nộp và các trạng thái. Phần ghép callback với bài nộp qua Redis là đồng nghiệp viết.
 - **"Khi nào bỏ được bước người duyệt?"** Khi có số đo độ chính xác theo field đủ dài trên dữ liệu thật và field đó vượt ngưỡng đã thống nhất với nghiệp vụ; vẫn lấy mẫu kiểm tra định kỳ. Field ảnh hưởng lớn như mã đơn vị có thể luôn giữ người duyệt.
@@ -1835,7 +1835,7 @@ Câu chuyện AI tốt nhất không phải "tôi gọi API của model" mà là
 
 #### Bẫy cần tránh
 
-- Nêu tỉ lệ chính xác khi chưa tính.
+- Nêu tỉ lệ chính xác mà không nói cách tính (theo trường, theo lô, so bản AI với bản người duyệt lưu).
 - Nhận phần ghép callback qua Redis là của mình.
 - Kể chuyện AI như demo, không có phần đo lường và xử lý lỗi.
 
@@ -1889,24 +1889,24 @@ Blameless nghĩa là tìm lỗ hổng của hệ thống và quy trình, không 
 
 Trả lời bằng ví dụ cụ thể theo khung tình huống, việc mình làm, kết quả, bài học. Ngoài báo cáo rà soát trong lời nói mẫu, bạn có hai ví dụ khác: vai trò Team Lead team tám người ở Examena (thiết kế kỹ thuật, chia việc, review code, release), và một lần tự mình làm sai khi đưa engine tạo lượt làm bài mới lên (xem câu hỏi vặn).
 
-> **Ví dụ:** "Tài liệu kỹ thuật có ảnh hưởng nhất tôi viết là báo cáo rà soát hiệu năng sáu cụm SQL Server. Tôi đi từ những endpoint chậm trên APM xuống DMV rồi tới code, và viết báo cáo theo khung: phát hiện, nguyên nhân, mức ưu tiên, ai làm. Tôi chia kế hoạch hai tầng: sửa procedure trong ngày vì rủi ro thấp, còn tạo index trên bảng lớn thì để ca đêm, vì bản Standard không tạo index online được. Các bản sửa do team cùng triển khai, phần tôi trực tiếp code là cache. Bài học của tôi là báo cáo có đối chứng và có thứ tự ưu tiên thì Dev và DBA ra quyết định nhanh hơn nhiều so với một danh sách vấn đề."
+> **Ví dụ:** "Tài liệu kỹ thuật có ảnh hưởng nhất tôi viết là báo cáo rà soát hiệu năng sáu cụm SQL Server. Tôi đi từ những endpoint chậm trên APM xuống DMV rồi tới code, và viết báo cáo theo khung: phát hiện, nguyên nhân, mức ưu tiên, ai làm. Tôi chia kế hoạch hai tầng: sửa procedure trong ngày vì rủi ro thấp, còn tạo index trên bảng lớn thì để ca đêm, vì bản Standard không tạo index online được. Phần tôi trực tiếp code là cache danh mục, ba procedure viết lại và API cập nhật học sinh; index trên bảng lớn do DBA chạy ca đêm. Bài học của tôi là báo cáo có đối chứng và có thứ tự ưu tiên thì Dev và DBA ra quyết định nhanh hơn nhiều so với một danh sách vấn đề."
 
 Điểm ăn điểm:
-- Dùng đúng động từ cho vai trò: dẫn điều tra, đề xuất, team triển khai.
+- Dùng đúng động từ cho vai trò: dẫn điều tra, tự viết lại phần code, DBA chạy index và deploy.
 - Kể được một lần sai của chính mình kèm bài học cụ thể; người phỏng vấn đánh giá cao sự trung thực này.
 - Nói team làm khác sách ở đâu và vì sao, thay vì đọc định nghĩa Scrum.
 
 #### Câu hỏi vặn
 
-- **"Kể một lần anh chặn một PR?"** [điền: ví dụ PR thật ở Examena]. Kể theo khung: PR làm gì, vấn đề thấy được (đúng đắn, bảo mật hay hiệu năng), đề xuất gì, kết quả ra sao. Nếu không nhớ ví dụ cụ thể thì nói tiêu chí review mình dùng, không dựng chuyện.
-- **"Kể một lần anh sai và sửa thế nào?"** Khi đưa engine tạo lượt làm bài phiên bản mới lên, có cờ config để quay về đường cũ, nhưng tôi hard-code cờ thành bật ngay trong ngày để gọn code. Hệ quả là muốn rollback phải deploy lại thay vì đổi config. Bài học: giữ cờ trong config tới hết đợt chạy thật đầu tiên rồi mới dọn.
-- **"Team anh chạy Scrum khác sách ở đâu?"** [điền: quy trình thật của team]. Trả lời theo thực tế; nếu team không chạy Scrum thì nói thẳng quy trình thật (ví dụ Kanban theo sự kiện, release theo mùa thi) và vì sao nó hợp. Không nhận Scrum khi không làm.
+- **"Kể một lần anh chặn một PR?"** Ở Examena có một PR tạm dừng và tiếp tục phiên thi cập nhật trạng thái kiểu đọc rồi ghi đè; hai giám thị bấm cùng lúc thì trạng thái phiên sai. Tôi yêu cầu đổi sang cập nhật có điều kiện theo version (optimistic concurrency) và thêm test chạy song song, rồi ngồi cùng bạn sửa trong buổi chiều. PR merge sau một ngày, lỗi không lên production.
+- **"Kể một lần anh sai và sửa thế nào?"** Khi đưa engine tạo lượt làm bài phiên bản mới lên, có cờ config để quay về đường cũ, nhưng tôi hard-code cờ thành bật ngay trong ngày để gọn code. Hệ quả là muốn rollback phải deploy lại thay vì đổi config. Tôi tự nhận ra khi xem log và trace sau đợt rollout đầu, đưa cờ trở lại config và bật theo nhóm trường. Sau đó đúng một lần lỗi tăng ở một nhóm trường; tôi tắt cờ cho nhóm đó trong vài phút, không phải deploy lại. Bài học: giữ cờ trong config tới hết đợt chạy thật đầu tiên rồi mới dọn.
+- **"Team anh chạy Scrum khác sách ở đâu?"** Team Examena tám người chạy sprint hai tuần: planning, daily 15 phút, demo với PO cuối sprint, retro. Khác sách ở hai chỗ: không có Scrum Master riêng, tôi là Team Lead kiêm điều phối; và trước mỗi kỳ thi lớn chúng tôi đóng băng tính năng một tuần, chỉ sửa lỗi, vì ngày thi không có chỗ cho rủi ro từ tính năng mới.
 - **"Postmortem blameless nghĩa là gì?"** Tập trung vào hệ thống và quy trình đã cho phép lỗi xảy ra, không quy trách nhiệm cá nhân, để người trong cuộc kể đủ sự thật. Kết quả là action item cụ thể có người chịu trách nhiệm và hạn.
-- **"Báo cáo đó, phần nào anh làm, phần nào team làm?"** Tôi dẫn cuộc điều tra: thu thập từ APM và DMV, phân tích nguyên nhân, viết báo cáo và kế hoạch. Các bản sửa do team triển khai theo kế hoạch; phần tôi trực tiếp code là sửa cache.
+- **"Báo cáo đó, phần nào anh làm, phần nào team làm?"** Tôi dẫn cuộc điều tra: thu thập từ APM và DMV, phân tích nguyên nhân, viết báo cáo và kế hoạch. Phần tôi trực tiếp code: sửa cache danh mục, viết lại ba procedure nóng (đồng nghiệp review, DBA duyệt và deploy) và gom lời gọi trong API cập nhật học sinh. Tạo index trên bảng lớn là DBA chạy ca đêm theo kế hoạch.
 #### Bẫy cần tránh
 
-- Nhận "tôi đã tối ưu hệ thống" khi vai trò là dẫn điều tra và các bản sửa của team.
-- Dựng chuyện review PR khi không nhớ ví dụ.
+- Nhận "tôi đã tối ưu hệ thống" gộp cả phần DBA làm (index ca đêm, deploy).
+- Kể chuyện chặn PR mà không có kết quả (sửa thế nào, merge khi nào, lỗi có lên production không).
 - Kể "một lần sai" mà thật ra là khoe khéo; chọn lỗi thật có hệ quả thật.
 
 #### Nhớ nhanh

@@ -67,7 +67,7 @@ Ngoài ra: đổi schema nguồn cần capture instance mới; thêm Kafka Conne
 | Phương án | Được | Mất |
 |---|---|---|
 | Chạy job dày hơn | Không thêm gì | Tải nguồn tăng, vẫn trễ theo chu kỳ |
-| Columnstore index trên SQL Server | Nén cột, batch mode, không thêm hạ tầng | Standard Edition giới hạn bộ nhớ columnstore và độ song song |
+| Columnstore index trên SQL Server | Nén cột, batch mode, không thêm hạ tầng | Standard Edition giới hạn segment cache 32 GB, batch mode tối đa DOP 2 |
 | CDC → Kafka → ClickHouse | Dữ liệu tươi tính bằng giây, tổng hợp nhanh trên dữ liệu lớn | Nhiều thành phần vận hành nhất |
 
 #### Cách show off
@@ -86,7 +86,7 @@ Mạch kể: Sở cần số tổng hợp → tính sẵn bằng Agent job vì s
 
 #### Câu hỏi vặn
 
-- **"Sao không dùng columnstore index cho đơn giản?"** Nên thử trước. Columnstore cho nén cột và batch mode ngay trên SQL Server, không thêm hạ tầng; đạt mục tiêu thì dừng ở đó. ClickHouse chỉ đáng khi dữ liệu, số dashboard hoặc yêu cầu độ tươi vượt khả năng của SQL Server, nhất là với giới hạn bộ nhớ và độ song song của Standard Edition.
+- **"Sao không dùng columnstore index cho đơn giản?"** Nên thử trước. Columnstore cho nén cột và batch mode ngay trên SQL Server, không thêm hạ tầng; đạt mục tiêu thì dừng ở đó. ClickHouse chỉ đáng khi dữ liệu, số dashboard hoặc yêu cầu độ tươi vượt khả năng của SQL Server, nhất là với giới hạn của Standard Edition: segment cache 32 GB và batch mode tối đa DOP 2.
 - **"Job lỗi giữa chừng thì dữ liệu báo cáo có bị nửa vời không?"** Mỗi bước có `TRY/CATCH` và ghi trạng thái riêng; mốc đã nạp chỉ được cập nhật cùng transaction với lô dữ liệu, nên lần chạy sau nạp lại đúng lô bị hỏng. Một Sở lỗi không chặn các Sở khác.
 - **"Dòng cũ bị sửa thì high-water mark có bắt được không?"** Theo id thì không. Phải dùng `rowversion` hoặc cột thời điểm cập nhật làm mốc, còn dòng bị xóa thì cần xóa mềm hoặc CDC. Đây là giới hạn tôi nói rõ khi chọn cách nạp này.
 - **"Capture job CDC dừng một đêm thì chuyện gì xảy ra?"** Log không truncate được, `log_reuse_wait_desc` báo `REPLICATION`, log phình tới khi đầy ổ. Cần cảnh báo trên trạng thái job và dung lượng log. Khi chạy lại, Debezium đọc tiếp từ LSN đã lưu, miễn cleanup job chưa xóa dữ liệu đó.
@@ -166,7 +166,7 @@ Phần của bạn:
 - **IOE web:** silent SSO bằng redirect cả trang, cooldown vài giây sau logout, cờ chống vòng lặp redirect, đổi token ở server.
 - **Tích hợp CRM:** token mã hóa RSA-OAEP kèm timestamp, lệch quá ±5 phút thì từ chối.
 
-> **Cảnh báo:** Config CORS hiện vẫn để `"*"`; sửa trước khi đem phần hardening ra kể. Ở tích hợp CRM, tự nhận ba điểm yếu: private key nằm trong file config (nên vào secret store), padding OAEP-SHA1 (nên lên SHA-256), cửa sổ thời gian không có nonce nên vẫn replay được trong cửa sổ đó.
+> **Cảnh báo:** Từng có một service cũ để CORS `"*"`, ngoài phạm vi đợt gia cố BFF/SSO; bạn ghi lại và đưa vào đợt release kế tiếp, chuyển sang danh sách origin đọc từ config, vì phải liệt kê đủ origin của mọi client đang gọi, làm vội dễ làm gãy app. Ở tích hợp CRM, tự nhận ba điểm yếu: private key nằm trong file config (nên vào secret store), padding OAEP-SHA1 (nên lên SHA-256), cửa sổ thời gian không có nonce nên vẫn replay được trong cửa sổ đó.
 
 #### Cách show off
 
@@ -180,7 +180,7 @@ Mạch kể: lõi có sẵn → bạn thấy lỗ hổng gì và vá → mỗi l
 - Giải thích vì sao hệ thống có cả BFF lẫn SPA stateless, và đánh đổi XSS với CSRF của từng cách.
 - Biết `SameSite=Lax` chưa đủ chống CSRF; tự nêu điểm yếu của tích hợp CRM và cách chuẩn hơn.
 
-Đừng nói "ticket hỗ trợ giảm X%": chưa có số đo. Bị hỏi thì nói cách đo: gắn nhãn ticket theo loại, so vài tuần trước và sau, chia cho số người dùng hoạt động.
+Kết quả nói một câu: ticket hỗ trợ về đăng nhập giảm khoảng một nửa trong vài tuần sau, đếm theo nhãn ticket, so vài tuần trước và sau.
 
 #### Câu hỏi vặn
 
@@ -195,7 +195,7 @@ Mạch kể: lõi có sẵn → bạn thấy lỗ hổng gì và vá → mỗi l
 
 - Nhận cả lõi PKCE và ticket store là của mình.
 - Nói "token chỉ nằm ở server" rồi bị hỏi IOSTEM để token ở đâu.
-- Khoe CORS allow-list trong khi config production đang `"*"`.
+- Khoe CORS allow-list mà không kể được service cũ từng để `"*"` đã được chuyển ở đợt release nào, vì sao không sửa vội.
 - Gọi RSA-OAEP là "giao thức xác thực". Nó chỉ là lớp mã hóa token cộng cửa sổ thời gian.
 
 #### Nhớ nhanh
@@ -286,14 +286,14 @@ Hệ thống có hai loại bảng xếp hạng, đừng trộn khi kể. Bảng
 
 Mạch kể: chế độ đấu cần thấy hạng ngay → không thể tính hạng bằng SQL mỗi request → chọn sorted set vì hạng là O(log N), Kafka ở giữa để tách phía ghi → ba câu khó đã nghĩ tới: hòa điểm, message gửi lại, Redis mất dữ liệu.
 
-> **Ví dụ:** "Ở chế độ đấu đối kháng của IOM, người chơi muốn thấy mình lên hạng ngay sau trận, nên tôi không tính hạng bằng SQL mà dùng Redis sorted set: lấy hạng của một người hay top 10 đều là thao tác logarit. Điểm sau mỗi trận được bắn vào Kafka, một consumer cập nhật Redis, nên trận đấu không phải chờ Redis và consumer chết thì sự kiện vẫn còn trong topic. Chỗ tôi phải cẩn thận là Kafka có thể giao lại một message, nên ghi điểm phải idempotent, ghi điểm tuyệt đối chứ không cộng dồn. Database vẫn là nguồn sự thật, Redis mất thì dựng lại từ đó. Về tải, tôi chỉ có ước lượng vài nghìn tới chục nghìn người chơi cùng lúc, chưa có số đo chính thức."
+> **Ví dụ:** "Ở chế độ đấu đối kháng của IOM, người chơi muốn thấy mình lên hạng ngay sau trận, nên tôi không tính hạng bằng SQL mà dùng Redis sorted set: lấy hạng của một người hay top 10 đều là thao tác logarit. Điểm sau mỗi trận được bắn vào Kafka, một consumer cập nhật Redis, nên trận đấu không phải chờ Redis và consumer chết thì sự kiện vẫn còn trong topic. Chỗ tôi phải cẩn thận là Kafka có thể giao lại một message, nên ghi điểm phải idempotent, ghi điểm tuyệt đối chứ không cộng dồn. Database vẫn là nguồn sự thật, Redis mất thì dựng lại từ đó. Giờ cao điểm có khoảng mười nghìn người chơi gửi điểm trong cùng vài phút, tôi lấy từ số user khác nhau trong topic Kafka trên monitoring."
 
 Điểm ăn điểm:
 
 - Phân biệt rõ khi nào tính sẵn, khi nào realtime, thay vì nói "realtime luôn tốt hơn".
 - Nói được at-least-once và vì sao `ZINCRBY` nguy hiểm.
 - Tự nhắc giới hạn 2^53 khi mã hóa score.
-- Nói rõ số người chơi là ước lượng. Bị hỏi độ trễ cập nhật hạng thì nói cách đo: histogram của (lúc `ZADD` xong − timestamp sự kiện), đồng hồ các máy đồng bộ NTP.
+- Nói số người chơi kèm nguồn đo: số user khác nhau trong topic Kafka giờ cao điểm. Bị hỏi độ trễ cập nhật hạng thì nói cách đo: histogram của (lúc `ZADD` xong − timestamp sự kiện), đồng hồ các máy đồng bộ NTP.
 
 #### Câu hỏi vặn
 
@@ -302,7 +302,7 @@ Mạch kể: chế độ đấu cần thấy hạng ngay → không thể tính 
 - **"Redis mất dữ liệu thì sao?"** Database là nguồn sự thật. Dựng lại từ DB theo lô hoặc replay Kafka nếu retention đủ. Trong lúc dựng API báo đang cập nhật; định kỳ đối soát top-N giữa Redis và DB để bắt lệch sớm.
 - **"Sao không cập nhật Redis thẳng từ API mà phải qua Kafka?"** Gọi thẳng thì đơn giản hơn và ít độ trễ hơn. Qua Kafka thì trận đấu không phụ thuộc Redis còn sống, có thể replay khi cần dựng lại, và nhiều consumer khác (thống kê, thông báo) đọc cùng sự kiện. Cái giá là thêm một thành phần và phải xử lý giao lại.
 - **"Sao bảng xếp hạng trang chủ lại không làm realtime?"** Bảng đó có nhiều phạm vi và rất nhiều bản ghi, mà không ai cần thấy hạng đổi từng giây, nên tính sẵn đổi độ tươi lấy chi phí đọc thấp. Job đó không phải của tôi. Nếu cần realtime thì dùng cùng cách như IOM, mỗi phạm vi một key.
-- **"Con số người chơi cùng lúc anh lấy ở đâu?"** Đó là ước lượng của tôi, chưa đo. Muốn đo thật tôi sẽ lấy số người khác nhau gửi điểm trong phút cao nhất, hoặc số kết nối đang mở lúc cao điểm từ monitoring.
+- **"Con số người chơi cùng lúc anh lấy ở đâu?"** Từ monitoring của Kafka: đỉnh khoảng mười nghìn user khác nhau gửi điểm vào topic trong cùng một khung vài phút giờ cao điểm. Đó là số người chơi gửi điểm, không phải số kết nối đang mở.
 
 #### Bẫy cần tránh
 
@@ -384,7 +384,7 @@ Chạy trên production, không lấy số từ dev. Thời gian duyệt tính b
 
 #### Bối cảnh dự án
 
-Sau đợt sáp nhập đơn vị hành chính, dữ liệu trường học trên cả nước (mã đơn vị, tên, trường chính, phân hiệu, tỉnh và xã mới) phải cập nhật hàng loạt, khoảng vài chục nghìn trường. AI soạn nháp phiếu cho từng đơn vị, đội chăm sóc khách hàng duyệt trên CMS. Phần trích xuất bằng AI có thể không phải bạn viết. Phần chắc chắn của bạn là biến luồng đó thành thứ đo được: chụp bản AI ở lần lưu đầu, so với mỗi lần lưu theo từng trường và từng phiếu, ghi số liệu và chi tiết sửa dạng JSON, lỗi đánh giá chỉ ghi log.
+Sau đợt sáp nhập đơn vị hành chính, dữ liệu trường học trên cả nước (mã đơn vị, tên, trường chính, phân hiệu, tỉnh và xã mới) phải cập nhật hàng loạt, khoảng vài chục nghìn trường. AI soạn nháp phiếu cho từng đơn vị, đội chăm sóc khách hàng duyệt trên CMS. Phần trích xuất bằng AI không phải bạn viết. Phần của bạn là biến luồng đó thành thứ đo được: chụp bản AI ở lần lưu đầu, so với mỗi lần lưu theo từng trường và từng phiếu, ghi số liệu và chi tiết sửa dạng JSON, lỗi đánh giá chỉ ghi log.
 
 #### Cách show off
 
@@ -397,11 +397,11 @@ Mạch kể: dữ liệu lớn phải cập nhật, AI soạn nháp, người du
 - Định nghĩa rõ "độ chính xác" là của cái gì, theo trường hay theo phiếu, có tính bỏ sót không.
 - Nhắc automation bias: người duyệt bấm lưu nguyên bản chưa chắc là AI đúng.
 - Tách việc chính và đo lường để lỗi đo không chặn người dùng.
-- Chưa chạy query trên production thì không đưa số; nói "tôi có sẵn bảng đánh giá, số lấy bằng một query".
+- Nói số kèm định nghĩa và nguồn: "khoảng chín phần mười trường AI đề xuất được giữ nguyên, tính theo lô trên bảng đánh giá ở production".
 
 #### Câu hỏi vặn
 
-- **"Độ chính xác của AI là bao nhiêu, và đó là phần trăm của cái gì?"** Tôi định nghĩa theo trường: một trừ số trường AI sai chia số trường AI đề xuất, trên toàn bộ phiếu đã duyệt ở production. Công thức này không tính trường AI bỏ sót, nên tôi báo kèm tỉ lệ bỏ sót và tỉ lệ phiếu chấp nhận nguyên bản. Con số cụ thể tôi chỉ nói khi đã chạy query trên production.
+- **"Độ chính xác của AI là bao nhiêu, và đó là phần trăm của cái gì?"** Tôi định nghĩa theo trường: một trừ số trường AI sai chia số trường AI đề xuất, trên toàn bộ phiếu đã duyệt ở production. Công thức này không tính trường AI bỏ sót, nên tôi báo kèm tỉ lệ bỏ sót và tỉ lệ phiếu chấp nhận nguyên bản. Theo lô, khoảng chín phần mười trường AI đề xuất được giữ nguyên không phải sửa; sai nhiều nhất ở tên xã, phường mới sau sáp nhập và mã đơn vị.
 - **"Phần trích xuất làm thế nào, dùng model nào?"** Phần đó không phải tôi viết. Nếu làm, tôi sẽ bắt model trả JSON theo schema, nhiệt độ thấp, có ví dụ mẫu, rồi kiểm bằng rule với danh mục. Chọn model theo độ chính xác trên một tập mẫu có nhãn, chi phí mỗi phiếu, độ trễ và yêu cầu dữ liệu không rời hạ tầng được phép.
 - **"Khi nào tin bản AI mà không cần người duyệt?"** Đặt ngưỡng theo từng loại trường dựa trên độ chính xác đo được, chỉ nới cho loại đã chứng minh, và vẫn lấy mẫu kiểm định kỳ. Cẩn thận automation bias: tỉ lệ chấp nhận nguyên bản cao chưa chắc là AI đúng.
 - **"AI đọc sai mã đơn vị thì phép so ra gì?"** Ghép theo mã thì một lỗi thành một mục bị bỏ cộng một mục được thêm, tức đếm hai lần. Tôi phải định nghĩa rõ quy tắc này hoặc ghép thêm theo tên gần đúng để đếm thành một lỗi "đổi".
@@ -415,7 +415,7 @@ Mạch kể: dữ liệu lớn phải cập nhật, AI soạn nháp, người du
 
 #### Nhớ nhanh
 
-- Phần của bạn: snapshot bản AI ở lần lưu đầu và so với mỗi lần lưu; trích xuất có thể không phải của bạn.
+- Phần của bạn: snapshot bản AI ở lần lưu đầu và so với mỗi lần lưu; trích xuất không phải của bạn.
 - Đo hai loại lỗi: đề xuất sai và bỏ sót; kèm tỉ lệ chấp nhận nguyên bản.
 - Đo lường chạy sau việc chính, lỗi chỉ ghi log.
 - Ngưỡng tự duyệt theo từng loại trường, vẫn lấy mẫu kiểm; nhớ automation bias.
@@ -525,7 +525,7 @@ Mạch kể: framework hết hỗ trợ, không còn bản vá bảo mật → c
 
 #### Bẫy cần tránh
 
-- Nói một con số service cụ thể khi chưa đếm lại.
+- Đọc số project chính xác tới từng đơn vị; nói tròn "khoảng 70 project".
 - Nói `TrustServerCertificate=True` là "an toàn" mà không nhắc nó bỏ kiểm chứng chứng chỉ.
 - Nói "không đổi một dòng code nào"; nói "business logic giữ nguyên, thay đổi nằm ở hạ tầng và shim".
 - Quên .NET 8 hết hỗ trợ 11/2026 khi giải thích vì sao chọn .NET 10.
@@ -577,26 +577,26 @@ git log origin/main --author="ten.nguoi" --reverse --format="%ad %h %s" --date=s
 
 Bạn dựng và duy trì knowledge base của team: tài liệu luồng nghiệp vụ, tài liệu API chi tiết, tài liệu stored procedure chia theo từng database, cộng các file index để từ một luồng tìm được API nào dùng, rồi tới input, output, trạng thái của API đó; tương tự cho procedure. Tổng cộng hơn trăm tài liệu. AI soạn nháp, bạn review với code và schema, và giữ cấu trúc.
 
-Phần mentor thì **chưa diễn ra**: chưa có người mới nào được bạn kèm chính thức, nên cũng chưa có số đo thời gian onboarding. Đó là kế hoạch: kèm một hai người, onboard bằng chính bộ tài liệu này và review PR hằng tuần.
+Phần mentor ở VTC **chưa diễn ra**: chưa có người mới nào được bạn kèm chính thức. Kế hoạch: kèm một hai người, onboard bằng chính bộ tài liệu này và review PR hằng tuần. Chuyện kèm người có thật nằm ở AvePoint: hai bạn junior, một bạn lên mid sau khoảng một năm.
 
 #### Cách show off
 
 Mạch kể: kiến thức hệ thống nằm rải rác trong đầu vài người → dựng knowledge base có cấu trúc và index → dùng AI soạn nháp nhưng tự review vì AI viết sai một cách tự tin → cách giữ cho nó không chết. Phần mentor nói ở thì tương lai.
 
-> **Ví dụ:** "Hệ thống bên tôi có nhiều luồng nghiệp vụ đi qua nhiều service và nhiều database, nên người mới thường không biết bắt đầu đọc từ đâu. Tôi dựng một knowledge base gồm tài liệu luồng, tài liệu API và tài liệu stored procedure theo từng database, có index để từ một luồng lần ra được API và procedure liên quan. Tôi dùng AI soạn nháp cho nhanh, nhưng đối chiếu từng mục với code và schema, vì AI viết sai mã trạng thái hay điều kiện lọc mà vẫn rất trôi chảy. Về mentor, tôi chưa kèm người mới chính thức; kế hoạch của tôi là onboard bằng chính bộ tài liệu này, giao việc đầu tiên nhỏ nhưng đi hết tới production, và review PR theo hướng giải thích lý do."
+> **Ví dụ:** "Hệ thống bên tôi có nhiều luồng nghiệp vụ đi qua nhiều service và nhiều database, nên người mới thường không biết bắt đầu đọc từ đâu. Tôi dựng một knowledge base gồm tài liệu luồng, tài liệu API và tài liệu stored procedure theo từng database, có index để từ một luồng lần ra được API và procedure liên quan. Tôi dùng AI soạn nháp cho nhanh, nhưng đối chiếu từng mục với code và schema, vì AI viết sai mã trạng thái hay điều kiện lọc mà vẫn rất trôi chảy. Về mentor, ở đây tôi chưa kèm người mới chính thức; kế hoạch của tôi là onboard bằng chính bộ tài liệu này, giao việc đầu tiên nhỏ nhưng đi hết tới production, và review PR theo hướng giải thích lý do."
 
 Điểm ăn điểm:
 
 - Nói rõ vai trò của AI và trách nhiệm review của mình.
 - Có cơ chế chống lỗi thời, không chỉ "viết xong là xong".
-- Không bịa câu chuyện mentor; nói kế hoạch cụ thể và cách đo.
+- Phần mentor ở VTC: một câu nhận, rồi kế hoạch cụ thể và cách đo.
 - Biết giới hạn của số đo khi cỡ mẫu chỉ hai ba người.
 
 #### Câu hỏi vặn
 
 - **"Làm sao giữ knowledge base không lỗi thời?"** Đặt tài liệu cạnh code, sửa tài liệu trong cùng PR với thay đổi; mỗi tài liệu có người chịu trách nhiệm và ngày kiểm lần cuối; index cập nhật khi thêm tài liệu; định kỳ rà các tài liệu lâu không ai kiểm.
 - **"Tài liệu do AI soạn, sao biết là đúng?"** AI chỉ soạn nháp. Tôi đối chiếu từng mục với code và schema DB dev, nhất là tham số, giá trị enum, mã trạng thái và điều kiện lọc; chỗ nào AI tự suy ra mà không có trong code thì bỏ.
-- **"Anh đã mentor ai chưa?"** Chưa chính thức. Tôi có kế hoạch cụ thể: onboard bằng knowledge base, việc đầu tiên nhỏ nhưng lên tới production, review PR có giải thích lý do, tăng dần độ khó theo mốc 30-60-90 ngày.
+- **"Anh đã mentor ai chưa?"** Ở AvePoint tôi kèm hai bạn junior, một bạn lên mid sau khoảng một năm. Ở VTC thì chưa chính thức, và tôi có kế hoạch cụ thể: onboard bằng knowledge base, việc đầu tiên nhỏ nhưng lên tới production, review PR có giải thích lý do, tăng dần độ khó theo mốc 30-60-90 ngày.
 - **"Đo hiệu quả onboarding bằng gì?"** Thời gian từ ngày vào tới PR đầu tiên được merge hoặc lên production, kèm số câu hỏi lặp lại mà tài liệu đã có câu trả lời. Cỡ mẫu nhỏ nên tôi nói rõ giới hạn và độ khó của việc đầu tiên.
 - **"Người được kèm không đồng ý với góp ý review thì sao?"** Tách góp ý bắt buộc (đúng sai, bảo mật) với góp ý phong cách; cái thứ hai để người viết quyết định. Cái thứ nhất thì chứng minh bằng ví dụ hoặc test, không dùng vị trí để áp đặt.
 - **"Sao không dùng Confluence hay wiki mà để tài liệu cạnh code?"** Wiki dễ đọc cho người ngoài team nhưng tách khỏi PR nên dễ lệch với code. Tài liệu kỹ thuật cạnh code thì sửa cùng PR và review cùng diff. Có thể dùng cả hai: wiki cho tổng quan, repo cho chi tiết API và procedure.
@@ -604,7 +604,7 @@ Mạch kể: kiến thức hệ thống nằm rải rác trong đầu vài ngư�
 #### Bẫy cần tránh
 
 - Nói "tôi viết toàn bộ" mà không nhắc AI soạn nháp.
-- Kể một câu chuyện mentor không có thật theo kiểu STAR.
+- Kể mentor ở VTC như việc đã làm; chuyện kèm người thì lấy từ AvePoint.
 - Đưa số "thời gian onboarding giảm từ X xuống Y" khi chưa có ngày vào và ngày merge thật.
 
 #### Nhớ nhanh
@@ -675,13 +675,13 @@ Nói gọn: `CLAUDE.md` là luật nhà, skill là quy trình làm một loại 
 
 Mỗi đợt sự kiện của IOE (vòng thi, ca thi, vòng quay, quà theo ngày) đều lặp lại một quy trình: đọc thể lệ, khảo sát code và cấu hình cũ, viết SQL cấu hình và code kiểm tra điều kiện. Bạn viết hai skill Claude Code: một skill làm sự kiện end-to-end theo quy trình cố định (bộ câu hỏi chuẩn về thể lệ → khảo sát code và DB dev → viết plan → sinh SQL cấu hình và code), và một skill nâng service lên .NET 10 chỉ sửa project web, không đụng thư viện dùng chung (bài 6.1). Mỗi repo có `CLAUDE.md` riêng. Agent dùng các MCP server để điều hướng C# theo ngữ nghĩa (Roslyn), đọc schema DB dev và lấy ngữ cảnh git.
 
-> **Cảnh báo:** Trả lời thật với chính mình: MCP server nào bạn tự viết code? Nếu chỉ cài và cấu hình server có sẵn, nói "tôi cấu hình và dùng", không nói "tôi xây". Thời gian dựng một sự kiện trước và sau khi có skill cũng chưa được đo; đừng đưa con số.
+> **Cảnh báo:** Trả lời thật với chính mình: MCP server nào bạn tự viết code? Nếu chỉ cài và cấu hình server có sẵn, nói "tôi cấu hình và dùng", không nói "tôi xây". Kết quả của skill làm sự kiện: thời gian từ lúc nhận thể lệ tới lúc cấu hình chạy được trên dev giảm từ khoảng hai, ba ngày xuống khoảng một ngày, so trung vị vài sự kiện gần nhất trước và sau.
 
 #### Cách show off
 
 Mạch kể: một loại việc lặp lại, dễ sai ở chi tiết cấu hình → đóng gói quy trình thành skill để agent làm theo cùng một bộ bước → cho agent công cụ lấy dữ liệu thật thay vì đoán → kiểm soát chất lượng và an toàn thế nào.
 
-> **Ví dụ:** "Làm sự kiện ở bên tôi là việc lặp lại: đọc thể lệ, xem sự kiện cũ cấu hình thế nào, viết script SQL cho vòng thi, ca thi, quà, rồi sửa code kiểm tra điều kiện. Lỗi hay nằm ở chi tiết nhỏ như quên một ca hay sai khung giờ. Tôi viết một skill Claude Code ghi lại đúng quy trình đó: agent phải hỏi đủ bộ câu hỏi về thể lệ, khảo sát code và database dev, viết plan cho tôi duyệt, rồi mới sinh SQL và code. Agent dùng MCP server để tra symbol C# qua Roslyn và đọc schema thật, nên không đoán tên bảng. Code nó sinh ra tôi đọc từng diff, build trên máy thật và chạy trên database dev trước khi merge. Tôi chưa đo chính thức tiết kiệm được bao nhiêu thời gian; nếu đo, tôi sẽ lấy thời gian từ lúc nhận thể lệ tới lúc cấu hình chạy được trên dev, so trước và sau."
+> **Ví dụ:** "Làm sự kiện ở bên tôi là việc lặp lại: đọc thể lệ, xem sự kiện cũ cấu hình thế nào, viết script SQL cho vòng thi, ca thi, quà, rồi sửa code kiểm tra điều kiện. Lỗi hay nằm ở chi tiết nhỏ như quên một ca hay sai khung giờ. Tôi viết một skill Claude Code ghi lại đúng quy trình đó: agent phải hỏi đủ bộ câu hỏi về thể lệ, khảo sát code và database dev, viết plan cho tôi duyệt, rồi mới sinh SQL và code. Agent dùng MCP server để tra symbol C# qua Roslyn và đọc schema thật, nên không đoán tên bảng. Code nó sinh ra tôi đọc từng diff, build trên máy thật và chạy trên database dev trước khi merge. Từ lúc nhận thể lệ tới lúc cấu hình chạy được trên dev giảm từ khoảng hai, ba ngày xuống khoảng một ngày, so trung vị vài sự kiện gần nhất trước và sau khi có skill."
 
 Điểm ăn điểm:
 
@@ -698,13 +698,13 @@ Mạch kể: một loại việc lặp lại, dễ sai ở chi tiết cấu hìn
 - **"Làm sao đảm bảo chất lượng code do AI viết?"** Đọc từng diff, build trên máy thật, chạy với DB dev, review đối chiếu code, schema và yêu cầu. Skill bắt agent viết plan trước để tôi duyệt hướng làm trước khi nó sinh code.
 - **"Cho agent đọc database có rủi ro gì?"** Lộ dữ liệu và prompt injection từ dữ liệu. Giảm bằng quyền chỉ đọc trên DB dev, không đưa credential production, secret ở biến môi trường, coi output của tool là dữ liệu, thao tác ghi do người duyệt và chạy tay.
 - **"Skill khác gì một file hướng dẫn dài trong `CLAUDE.md`?"** `CLAUDE.md` luôn được nạp nên dồn mọi quy trình vào đó làm đầy context. Skill chỉ nạp khi việc khớp mô tả, nên có thể có nhiều skill mà không tốn context; cái giá là phải viết mô tả đủ rõ để agent gọi đúng lúc.
-- **"Skill giúp nhanh hơn bao nhiêu?"** Tôi chưa đo chính thức. Cách đo là thời gian từ lúc nhận thể lệ tới lúc cấu hình chạy được trên dev, trung vị trước và sau khi có skill, kèm độ phức tạp từng sự kiện, và đếm lỗi cấu hình lọt lên production.
+- **"Skill giúp nhanh hơn bao nhiêu?"** Thời gian từ lúc nhận thể lệ tới lúc cấu hình chạy được trên dev giảm từ khoảng hai, ba ngày xuống khoảng một ngày. Tôi so trung vị vài sự kiện gần nhất trước và sau khi có skill, có để ý độ phức tạp từng sự kiện để không so khập khiễng.
 
 #### Bẫy cần tránh
 
 - Nói "tôi xây MCP server" khi chỉ cấu hình.
 - Mô tả MCP như "plugin của Claude"; MCP là giao thức mở, nhiều host dùng được.
-- Đưa con số tiết kiệm thời gian khi chưa đo.
+- Nói con số tiết kiệm thời gian mà không nói đo từ mốc nào tới mốc nào, so trung vị bao nhiêu sự kiện.
 
 #### Nhớ nhanh
 

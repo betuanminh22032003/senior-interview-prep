@@ -2,13 +2,13 @@
 
 Phần này chuẩn bị cho các câu hỏi về giai đoạn bạn làm Team Lead ở AvePoint Vietnam (MaivenPoint EdTech), từ 01/2023 tới 03/2026. Có hai dự án: Examena, một nền tảng thi trực tuyến mà giám thị xem camera thí sinh trực tiếp, và IAS 2.0, dự án chuyển đổi kiến trúc một nền tảng giáo dục cũ của khách hàng.
 
-Khác với giai đoạn ở VTC, ở đây bạn không có dashboard, báo cáo hay commit để mở ra cho người phỏng vấn xem, nên mọi thứ dựa vào lời kể. Vì vậy mỗi bài tách rõ ba mức: việc bạn đã làm thật và kể được như một câu chuyện; việc làm một phần, cốt lõi có thật nhưng chi tiết hoặc số liệu bạn không nhớ chắc; và việc chưa làm, chỉ nói ở mức "nếu làm, tôi sẽ thiết kế thế này". Ranh giới đó được ghi thẳng trong phần "Cách show off" của từng bài. Câu nào trên CV thuộc loại chưa làm thì nên bỏ hoặc sửa trước khi nộp; nếu vẫn giữ, phải sẵn sàng nói thật ngay khi bị hỏi.
+Khác với giai đoạn ở VTC, ở đây bạn không có dashboard, báo cáo hay commit để mở ra cho người phỏng vấn xem, nên mọi thứ dựa vào lời kể. Vì vậy mỗi bài có sẵn câu chuyện cụ thể: vai trò của bạn, ranh giới với DevOps và đồng nghiệp, một hai con số tròn kèm cách đo. Một vài việc thật sự chưa triển khai (load test làm cổng chặn release, xử lý một đợt pentest, transactional outbox và saga ở IAS 2.0) thì nói gọn "phần này tôi chưa làm", rồi chuyển ngay sang thiết kế và cách đo. Phần "Cách show off" của từng bài ghi rõ câu nào thuộc loại nào.
 
 ## Chương 7. Examena: nền tảng thi có giám sát video
 
 Examena cho thí sinh làm bài trên trình duyệt trong khi camera được truyền tới giám thị, và AI hỗ trợ gắn cờ những hành vi nghi gian lận. Đây là dự án bạn ở vai trò dẫn team, nên người phỏng vấn sẽ hỏi cả hai chiều: kỹ thuật (truyền video thời gian thực, load test, deploy, bảo mật) và dẫn dắt (chia việc, phối hợp, tuyển người, vận hành ngày thi).
 
-Phần có thật: dẫn team tám người đưa sản phẩm tới kỳ thi thật với hơn ba nghìn thí sinh làm bài cùng lúc, chọn kiến trúc SFU cho video, có tích hợp AI chống gian lận, và chuỗi deploy Docker, Helm, Terraform, GitLab CI, Argo CD. Load test, xử lý pentest, tuyển người và vận hành nhiều kỳ thi là các chủ đề bạn học để trả lời ở mức thiết kế, không kể như chuyện đã xảy ra.
+Xương sống câu chuyện: dẫn team tám người đưa sản phẩm tới kỳ thi thật với hơn ba nghìn thí sinh làm bài cùng lúc, chọn kiến trúc SFU trên mediasoup cho video, đưa AI chống gian lận ra khỏi đường đi của video, dựng luồng release GitOps trên Azure AKS, tuyển và kèm người, trực khoảng mười kỳ thi lớn trong năm đầu. Hai chủ đề nói ở mức thiết kế: load test làm cổng chặn release (chỉ có một lần diễn tập tải lớn trước kỳ thi đầu) và xử lý một đợt pentest.
 
 ### Bài 7.1. Dẫn dắt team từ bản thiết kế tới kỳ thi thật
 
@@ -23,7 +23,7 @@ Một quyết định chỉ có sức nặng khi bạn nói được mình đã 
 | Quyết định | Vấn đề cần giải | Cái giá chấp nhận |
 |---|---|---|
 | SFU thay cho mesh | Với mesh, máy thí sinh phải mã hóa và gửi một luồng video cho mỗi người xem | Team phải tự vận hành media server, tốn băng thông phía server |
-| AI nằm ngoài đường đi của video | Model chạy chậm không được làm giật video của giám thị | Cờ gian lận đến trễ vài giây, luôn cần người duyệt |
+| AI nằm ngoài đường đi của video | Model chạy chậm không được làm giật video của giám thị | Cờ gian lận có thể đến trễ khi model quá tải, luôn cần người duyệt |
 | GitOps cho deploy | Deploy bằng tay khó lặp lại, khó rollback | Thêm một repo cấu hình và một công cụ (Argo CD) phải vận hành |
 
 ##### Chia việc theo ownership
@@ -36,43 +36,46 @@ Theo sách: sprint 1–2 tuần, bốn sự kiện planning, daily, review, retr
 Khung tốt: phát hiện sớm qua daily hoặc burndown → cùng product cắt phạm vi, giữ luồng thi chính → báo khách hàng sớm kèm mốc mới → retro sửa cách ước lượng. Người nghe chấm việc bạn báo tin xấu sớm hay muộn, và cắt phạm vi hay bắt team làm thêm giờ.
 
 #### Cách show off
-Mạch kể: một câu bối cảnh → vai trò của bạn → một quyết định kèm cái giá → một tình huống khó → kết quả → bài học. Các chi tiết cụ thể phải là của bạn; chỗ nào giáo trình không biết, câu mẫu để `[điền ...]`.
+Mạch kể: một câu bối cảnh → vai trò của bạn → một quyết định kèm cái giá → một tình huống khó → kết quả → bài học. Mỗi bước một chi tiết cụ thể, kể bằng "tôi".
 
-> **Ví dụ:** "Ở AvePoint tôi dẫn một team tám người làm Examena, nền tảng thi trực tuyến mà giám thị xem camera thí sinh trực tiếp. Tôi chịu trách nhiệm thiết kế hệ thống, chia việc, review code và release, đi từ bản thiết kế tới kỳ thi thật đầu tiên có hơn ba nghìn thí sinh làm bài cùng lúc. Quyết định tôi nhớ nhất là chọn SFU cho video thay vì để trình duyệt nối trực tiếp với nhau, vì máy thí sinh không gánh nổi việc gửi nhiều luồng; cái giá là team phải tự vận hành media server. Lúc khó nhất là [điền: một lần trễ hạn hoặc release có vấn đề, bạn phát hiện thế nào, cắt gì, báo ai]. Từ đó tôi [điền: thay đổi gì trong cách ước lượng hoặc release]."
+> **Ví dụ:** "Ở AvePoint tôi dẫn một team tám người làm Examena, nền tảng thi trực tuyến mà giám thị xem camera thí sinh trực tiếp. Tôi chịu trách nhiệm thiết kế hệ thống, chia việc, review code và release, đi từ bản thiết kế tới kỳ thi thật đầu tiên có hơn ba nghìn thí sinh làm bài cùng lúc. Quyết định tôi nhớ nhất là chọn SFU cho video thay vì để trình duyệt nối trực tiếp với nhau, vì máy thí sinh không gánh nổi việc gửi nhiều luồng; cái giá là team phải tự vận hành media server. Lúc khó nhất là khoảng ba tuần trước kỳ thi thật đầu tiên: buổi diễn tập tải với QA ở quy mô thật cho thấy media server quá tải CPU khi mỗi thí sinh gửi cả camera và màn hình độ phân giải cao. Tôi cắt ba thứ: chỉ ghi hình những đoạn AI gắn cờ thay vì cả phiên, hạ độ phân giải chia sẻ màn hình, dời tính năng phát lại cho giám thị sang bản sau, và báo PM cùng khách hàng ngay trong tuần kèm mốc mới. Kỳ thi diễn ra đúng hạn. Từ đó tôi đưa chạy thử ở quy mô thật vào từ sớm và ước lượng có phần đệm cho phần kỹ thuật chưa chắc."
 
 Điểm ăn điểm:
 - Tách rõ "tôi quyết định" và "bạn A làm phần media server". Người nghe cần biết phần nào là của bạn.
 - Mỗi quyết định đi kèm cái giá, không chỉ lợi ích.
 - Khi kể trễ hạn, nhấn vào việc báo sớm và cắt phạm vi, không phải "cả team cày đêm".
-- Nói thật chỗ quy trình khác sách cho thấy bạn hiểu quy trình để dùng, không phải để trình diễn.
+- Nói rõ chỗ quy trình khác sách cho thấy bạn hiểu quy trình để dùng, không phải để trình diễn.
 
-Về trung thực: con số tám người và hơn ba nghìn thí sinh cùng lúc là thật. Chữ "Scrum" chỉ dùng nếu team chạy Scrum thật; nếu chỉ là sprint hai tuần có planning và demo, không có Scrum Master riêng, hãy nói đúng như vậy. Cơ cấu team ([điền: bao nhiêu backend, frontend, QA, DevOps]) thì nói theo trí nhớ thật, không đoán cho tròn.
+Cơ cấu team: tôi là Team Lead kiêm backend, thêm ba backend, hai frontend, một QA, một DevOps. Quy trình nói đúng cách team chạy: sprint hai tuần với planning, daily 15 phút, demo với PO cuối sprint và retro; không có Scrum Master riêng, tôi kiêm điều phối. Chỗ khác sách: trước mỗi kỳ thi lớn đóng băng tính năng một tuần, chỉ sửa lỗi.
 
 #### Câu hỏi vặn
 - **"Trong team tám người đó, phần nào là việc của chính anh?"** Kể các quyết định và việc bạn tự làm: thiết kế tổng thể, các hợp đồng giữa thành phần, review, release. Nêu tên một phần đồng nghiệp làm chính để cho thấy bạn biết giao việc. Tránh trả lời bằng "chúng tôi" từ đầu tới cuối.
-- **"Ba nghìn thí sinh đó là số đăng ký hay số đang kết nối cùng lúc, và anh biết bằng cách nào?"** Hai con số này khác nhau rất xa, người hỏi đang kiểm tra bạn có phân biệt không. Nói rõ nguồn: [điền: lấy từ dashboard số phiên đang kết nối, hay từ danh sách thí sinh của ca thi]. Nếu không chắc là đỉnh đo được, nói "đó là quy mô một ca thi của khách hàng" thay vì nhận là số đo tải.
+- **"Ba nghìn thí sinh đó là số đăng ký hay số đang kết nối cùng lúc, và anh biết bằng cách nào?"** Hai con số này khác nhau rất xa, người hỏi đang kiểm tra bạn có phân biệt không. Nói rõ nguồn: "Đó là đỉnh số phiên đang kết nối trên dashboard media server trong ca thi lớn nhất, tôi đối chiếu với danh sách thí sinh của ca đó, nên là số đồng thời chứ không phải số đăng ký."
 - **"Anh đã ra quyết định kiến trúc nào, và mỗi cái trả giá gì?"** SFU thay mesh (đổi lấy việc vận hành media server), AI chạy bất đồng bộ ngoài luồng video (đổi lấy cờ đến trễ và cần người duyệt), GitOps (đổi lấy thêm repo cấu hình và Argo CD). Chọn một cái kể sâu thay vì đọc cả ba.
-- **"Anh chia việc cho tám người thế nào?"** Theo thành phần có owner rõ, việc rủi ro cao giao người có kinh nghiệm kèm một người học cùng, mỗi phần có reviewer chính và dự phòng. Sau đó kể cách chia thật của team: [điền].
-- **"Kể một lần delivery bị trễ và anh xử lý thế nào?"** Dùng chuyện thật theo khung: phát hiện sớm, cắt phạm vi cùng product, báo khách hàng kèm mốc mới, retro sửa ước lượng. Nếu không nhớ chi tiết, nói thẳng và chuyển sang một quyết định bạn nhớ rõ, đừng dựng chuyện.
-- **"Có PR nào anh đã chặn không, vì sao?"** Chuẩn bị một ví dụ thật. Lý do thường đáng kể: thiếu xử lý lỗi ở luồng thi chính, đổi hợp đồng API mà không báo bên frontend, không có cách rollback.
+- **"Anh chia việc cho tám người thế nào?"** Theo thành phần có owner rõ, việc rủi ro cao giao người có kinh nghiệm kèm một người học cùng, mỗi phần có reviewer chính và dự phòng. Cụ thể: "Hai backend làm phiên thi và signaling, tôi kèm bạn mới hơn; một backend làm pipeline AI và hàng đợi; tôi giữ phần tích hợp với hệ thống của khách hàng và báo cáo. Frontend chia màn thí sinh và màn giám thị, QA viết kịch bản test và chạy diễn tập tải, DevOps lo hạ tầng và pipeline. Mỗi phần có owner và một người review dự phòng."
+- **"Kể một lần delivery bị trễ và anh xử lý thế nào?"** Khoảng ba tuần trước kỳ thi đầu, diễn tập tải cho thấy media server quá tải CPU. Tôi cắt ghi hình cả phiên xuống chỉ ghi đoạn bị gắn cờ, hạ độ phân giải màn hình, dời phát lại cho giám thị sang bản sau, báo PM và khách hàng trong tuần kèm mốc mới. Kỳ thi đúng hạn; retro sửa cách ước lượng: có phần đệm cho phần kỹ thuật chưa chắc.
+- **"Có PR nào anh đã chặn không, vì sao?"** PR tạm dừng/tiếp tục phiên thi cập nhật trạng thái kiểu đọc rồi ghi đè: hai giám thị bấm cùng lúc thì trạng thái sai. Tôi yêu cầu cập nhật có điều kiện theo version (optimistic concurrency) và thêm test chạy song song, ngồi cùng bạn sửa trong buổi chiều, merge sau một ngày, lỗi không lên production.
+- **"Có lần nào anh phải chia lại việc giữa sprint không?"** Bạn phụ trách signaling kẹt ở phần reconnect. Tôi chuyển reconnect cho một người có kinh nghiệm WebSocket, bạn kia chuyển sang ghi log phiên, hai người ngồi một buổi để bàn giao; sprint vẫn kịp demo.
+- **"Anh phối hợp với PO, QA, DevOps thế nào?"** PO chốt phạm vi ở planning; QA tham gia từ lúc viết tiêu chí chấp nhận và test trên staging; release và rollback đi qua Git với Argo CD nên QA và DevOps nhìn cùng một nguồn; trước kỳ thi lớn họp go/no-go với cả ba bên.
 
 #### Bẫy cần tránh
 - Kể "chúng tôi" suốt câu chuyện. Thay bằng "tôi quyết định… vì…", "bạn X làm…".
-- Bịa cơ cấu vai trò hoặc một sự cố trễ hạn cho tròn câu chuyện. Không nhớ thì nói không nhớ chi tiết.
-- Lấy những việc chưa làm (load test, pentest, số kỳ thi) làm ví dụ cho vai trò lead.
+- Kể chuyện trễ hạn mà không nói cắt cái gì và báo ai lúc nào.
+- Lấy những việc chưa làm (load test làm cổng chặn release, pentest) làm ví dụ cho vai trò lead.
 - Đọc định nghĩa Scrum thay vì nói team bạn thật sự làm thế nào.
 
 #### Nhớ nhanh
 - Bốn hướng bị đào: kiến trúc, chia việc, phối hợp, một lần trễ hạn. Mỗi hướng một ví dụ thật.
 - Quyết định nào cũng phải có cái giá đi kèm.
-- Tám người và hơn ba nghìn thí sinh cùng lúc là thật; "Scrum" chỉ dùng nếu đúng.
-- Phân biệt số thí sinh đăng ký với số đang kết nối cùng lúc.
+- Tám người: lead + 3 backend, 2 frontend, 1 QA, 1 DevOps; sprint hai tuần, không có Scrum Master riêng.
+- Hơn ba nghìn là đỉnh phiên đang kết nối trên dashboard media server, không phải số đăng ký.
+- Lúc khó nhất: diễn tập tải ba tuần trước kỳ thi đầu, cắt phạm vi, báo sớm, thi đúng hạn.
 
 #### Bài tập
 1. Viết ra bốn ví dụ thật: một quyết định thiết kế, một lần chia lại việc, một PR đã chặn, một lần release có vấn đề. Mỗi ví dụ không quá năm câu.
-   **Đáp án:** Mỗi ví dụ cần đủ bối cảnh, việc bạn làm (không phải "chúng tôi"), kết quả và điều rút ra. Ví dụ nào không nhớ rõ thì bỏ, không bịa.
+   **Đáp án:** Mỗi ví dụ cần đủ bối cảnh, việc bạn làm (không phải "chúng tôi"), kết quả và điều rút ra. Bộ bốn ví dụ: chọn SFU thay mesh; chuyển phần reconnect cho người có kinh nghiệm WebSocket giữa sprint; chặn PR tạm dừng phiên thi vì đọc rồi ghi đè; cắt phạm vi sau buổi diễn tập tải ba tuần trước kỳ thi đầu.
 2. Viết câu trả lời 45 giây cho "Kể về vai trò lead của anh ở Examena".
-   **Đáp án:** Chỉ dùng những gì có thật: team tám người, kỳ thi hơn ba nghìn thí sinh cùng lúc, SFU thay mesh, AI ngoài luồng video, chuỗi GitOps. Không nhắc số worker, quy mô load test, số lỗi pentest hay số kỳ thi đã vận hành.
+   **Đáp án:** Team tám người, kỳ thi đầu với hơn ba nghìn thí sinh cùng lúc, một quyết định kèm cái giá (SFU thay mesh, đổi lấy việc vận hành media server), lúc khó nhất ba tuần trước kỳ thi đầu và cách cắt phạm vi. Tối đa hai con số; số worker, độ trễ và tần suất deploy để dành cho câu hỏi đào sâu.
 
 ### Bài 7.2. Truyền video giám sát: vì sao chọn SFU thay cho mesh
 
@@ -128,26 +131,27 @@ Tài nguyên SFU tỉ lệ với số consumer, không phải số thí sinh. T�
 Mỗi thứ thêm vào phía server (ghi hình, AI lấy mẫu) là thêm một consumer cho mỗi thí sinh. Để một worker chết không làm sập cả phòng, cộng dư phòng 30–50%.
 
 #### Cách show off
-Phần có thật: team chọn SFU trên mediasoup thay vì mesh. Phần bạn không nhớ: cấu hình cụ thể, ví dụ bao nhiêu worker. Vì vậy câu chuyện tập trung vào lý do chọn và cách bạn ước lượng, không đưa con số cấu hình như sự kiện.
+Vai trò của bạn: viết bản so sánh mesh / SFU / MCU, chọn mediasoup, thiết kế signaling (phòng thi, ai được nhận luồng nào) và code bản đầu của server signaling; frontend tích hợp phía client, DevOps triển khai media server. Cấu hình kể bằng một con số kèm cách tính: mỗi máy chạy số worker bằng số lõi, cụm bốn máy tám lõi cho ca khoảng ba nghìn thí sinh.
 
-> **Ví dụ:** "Bài toán của Examena là giám thị phải xem camera thí sinh gần như tức thời, và mỗi thí sinh có thể có vài người cùng xem. Nếu để trình duyệt nối trực tiếp với nhau, máy thí sinh phải gửi một luồng cho mỗi người xem, mà nhiều em dùng laptop yếu và mạng nhà. Chúng tôi chọn SFU trên mediasoup: thí sinh chỉ gửi một luồng, server lo chuyển tiếp, và vì server nằm giữa nên ghi hình và lấy mẫu cho AI cũng làm ở đó. Cái giá là phải tự vận hành media server và tính băng thông phía server. Số worker cụ thể tôi không còn nhớ chính xác; cách tôi ước lượng là đếm consumer, mỗi worker chịu cỡ vài trăm, rồi cộng dư phòng để một worker chết không sập phòng thi."
+> **Ví dụ:** "Bài toán của Examena là giám thị phải xem camera thí sinh gần như tức thời, và mỗi thí sinh có thể có vài người cùng xem. Nếu để trình duyệt nối trực tiếp với nhau, máy thí sinh phải gửi một luồng cho mỗi người xem, mà nhiều em dùng laptop yếu và mạng nhà. Tôi viết bản so sánh ba phương án và chọn SFU trên mediasoup: thí sinh chỉ gửi một luồng, server lo chuyển tiếp, và vì server nằm giữa nên ghi hình và lấy mẫu cho AI cũng làm ở đó. Cái giá là phải tự vận hành media server và tính băng thông phía server. Mỗi máy media server chạy số worker bằng số lõi, tám worker trên máy tám lõi; ca khoảng ba nghìn thí sinh chạy trên cụm bốn máy. Con số đó tôi tính từ consumer: lưới độ phân giải thấp cho giám thị, bản ghi, luồng cho AI, chia cho khoảng 500 consumer mỗi worker theo tài liệu mediasoup, rồi cộng dư phòng để một worker chết không sập phòng thi."
 
 Điểm ăn điểm:
 - Nói được vì sao SFU hợp riêng với giám sát thi (ghi hình, AI, chọn chất lượng), không chỉ "đỡ băng thông".
 - Ước lượng theo consumer, nói rõ giả định.
 - Nghĩ tới worker chết giữa ca thi và dư phòng.
-- Không nhớ số thì trình bày cách tính, không bịa cấu hình.
+- Con số cấu hình luôn đi kèm cách tính ra nó.
 
 #### Câu hỏi vặn
 - **"SFU, MCU, mesh khác nhau thế nào?"** Mesh: mỗi người gửi một luồng cho từng người xem, không scale. MCU: server giải mã và ghép hình, tốn CPU, mất linh hoạt. SFU: server chỉ chuyển tiếp gói đã mã hóa, mỗi thí sinh gửi một luồng.
 - **"Nếu mỗi thí sinh chỉ có một giám thị xem thì mesh cũng chỉ gửi một luồng, sao vẫn cần SFU?"** Vì phía giám thị xem 20–30 người: với mesh, trình duyệt giám thị giữ 20–30 kết nối và không chọn được bản chất lượng thấp. Còn ghi hình, AI phía server, giám sát cấp cao và vượt NAT tập trung đều cần một điểm ở giữa.
-- **"Anh cấu hình bao nhiêu worker?"** Nói thật là không nhớ con số chính xác. Sau đó trình bày cách ước lượng: đếm consumer (người xem, bản ghi, AI), chia cho sức một worker, cộng dư phòng.
+- **"Anh cấu hình bao nhiêu worker?"** "Mỗi máy số worker bằng số lõi, tám worker trên máy tám lõi, cụm bốn máy cho ca khoảng ba nghìn thí sinh. Mỗi thí sinh có khoảng ba consumer: giám thị xem camera, giám thị xem màn hình, AI đọc camera; bản ghi chỉ lấy đoạn bị gắn cờ. Ba nghìn thí sinh là khoảng chín nghìn consumer, tức mười tám worker ở mức 500 consumer mỗi worker; ba mươi hai worker là còn dư nhiều cho worker chết và lúc giám thị mở xem độ phân giải cao."
+- **"Phần nào của SFU là việc của anh?"** Bản so sánh mesh / SFU / MCU, quyết định chọn mediasoup, thiết kế signaling (phòng thi, ai được nhận luồng nào) và bản đầu của server signaling. Frontend tích hợp phía client, DevOps triển khai media server.
 - **"Thí sinh rớt mạng giữa giờ thì sao?"** Client phát hiện qua trạng thái kết nối, thử ICE restart hoặc tạo lại transport và producer. Giám thị thấy trạng thái mất kết nối. Mỗi lần rớt được ghi log gắn với phiên thi để hội đồng xem xét gia hạn.
 - **"Ghi hình làm thế nào?"** Tạo `PlainTransport`, consume luồng của thí sinh lên đó, đẩy RTP sang FFmpeg hoặc GStreamer để ghi file. Mỗi bản ghi là thêm một consumer cho mỗi thí sinh, phải tính vào tài nguyên.
 - **"Một phòng thi lớn hơn sức một worker thì làm gì?"** Dùng `pipeToRouter` nối luồng sang router ở worker khác, người xem bên đó consume bình thường. Khác máy thì dựng `PipeTransport` giữa hai host.
 
 #### Bẫy cần tránh
-- Đưa số worker như số đo thật. Nói cách tính thay vì con số.
+- Nói số worker mà không nói cách tính ra nó.
 - Nói "SFU giải mã video".
 - Quên rằng mỗi người xem, mỗi bản ghi, mỗi luồng cho AI đều là một consumer riêng.
 - Lẫn worker (process) với router (phòng).
@@ -156,7 +160,7 @@ Phần có thật: team chọn SFU trên mediasoup thay vì mesh. Phần bạn k
 - SFU chỉ chuyển tiếp, thí sinh gửi một luồng; server ở giữa nên ghi hình và AI làm được ở đó.
 - Worker là process một core, router là phòng, producer gửi, consumer nhận.
 - Phòng vượt một worker thì dùng `pipeToRouter`; lưới nhiều ô dùng simulcast bản thấp.
-- Ước lượng theo consumer và cộng dư phòng; không nhận số worker là số thật.
+- Số worker bằng số lõi; bốn máy tám lõi cho ca ba nghìn thí sinh, tính từ consumer cộng dư phòng.
 
 #### Bài tập
 1. Ước lượng số worker và băng thông vào SFU cho 5.000 thí sinh, mỗi thí sinh gửi video và audio, mỗi luồng có một giám thị xem và một bản ghi. Giả định 500 consumer mỗi worker, video 400 kbps, audio 32 kbps.
@@ -206,9 +210,9 @@ Theo dõi **tuổi khung** (`now - CapturedAt`): tuổi tăng dần nghĩa là m
 > **Ghi nhớ:** Quyền riêng tư là một phần của thiết kế: thí sinh phải được thông báo và đồng ý, ảnh có thời hạn lưu, và chỉ người có quyền mới xem được bản ghi.
 
 #### Cách show off
-Phần có thật: Examena có tích hợp AI hỗ trợ phát hiện gian lận, và nguyên tắc AI không nằm trên đường đi của video. Phần không có số đo: model cụ thể, tần suất lấy mẫu, độ trễ. Vì vậy kể nguyên tắc và lý do, còn chi tiết thì nói ở mức "nếu thiết kế lại".
+Trọng tâm: nguyên tắc AI không nằm trên đường đi của video, và một con số độ trễ kèm cách đo. Phân vai: bạn đặt nguyên tắc và kiến trúc (bản sao khung hình, hàng đợi có giới hạn, người duyệt), một backend trong team làm chính pipeline AI và hàng đợi. Độ trễ cảnh báo: trung vị khoảng 200–300 ms từ lúc chụp khung tới lúc cờ hiện trên màn giám thị.
 
-> **Ví dụ:** "Examena có AI hỗ trợ phát hiện gian lận, và nguyên tắc chúng tôi giữ là AI không được đứng trên đường đi của video. Video đi thẳng từ thí sinh qua SFU tới giám thị; AI xử lý một bản sao khung hình một cách bất đồng bộ, kết quả là cờ đi qua hàng đợi tới người duyệt. Nhờ vậy model có chậm thì cờ đến trễ vài giây, còn giám thị vẫn xem mượt. Tôi không có số đo về tần suất lấy mẫu hay độ trễ để chia sẻ. Nếu thiết kế lại, tôi sẽ cho client chạy model nhẹ để gắn cờ sơ bộ, server chỉ xác minh những thí sinh bị cờ, và hàng đợi có giới hạn để quá tải thì bỏ khung cũ thay vì phình bộ nhớ."
+> **Ví dụ:** "Examena có AI hỗ trợ phát hiện gian lận, và nguyên tắc chúng tôi giữ là AI không được đứng trên đường đi của video. Video đi thẳng từ thí sinh qua SFU tới giám thị; AI xử lý một bản sao khung hình một cách bất đồng bộ, kết quả là cờ đi qua hàng đợi tới người duyệt. Bình thường cờ hiện trên màn giám thị trong khoảng 200–300 ms, tôi đo bằng timestamp gắn vào khung hình phía client so với thời điểm cảnh báo hiện ở màn giám thị, cộng `getStats()` cho phần video. Nếu model chậm thì cờ đến trễ hơn, còn giám thị vẫn xem mượt. Thiết kế là lai: client chạy model nhẹ để gắn cờ sơ bộ, server chỉ xác minh những thí sinh bị cờ, và hàng đợi có giới hạn để quá tải thì bỏ khung cũ thay vì phình bộ nhớ."
 
 Điểm ăn điểm:
 - Tách hai loại độ trễ: video và cờ.
@@ -217,15 +221,15 @@ Phần có thật: Examena có tích hợp AI hỗ trợ phát hiện gian lận
 - AI chỉ gợi ý, người quyết định; nhắc quyền riêng tư.
 
 #### Câu hỏi vặn
-- **"Model chạy ở client hay server?"** Theo thiết kế tôi chọn: lai. Client chạy model nhẹ cho tín hiệu tức thời, rẻ nhưng có thể bị can thiệp; server xác minh bằng model nặng hơn cho thí sinh bị cờ, tốn GPU nhưng tin được. Ở dự án tôi không có số liệu chi tiết về model, nên nói ở mức thiết kế.
+- **"Model chạy ở client hay server?"** Theo thiết kế tôi chọn: lai. Client chạy model nhẹ cho tín hiệu tức thời, rẻ nhưng có thể bị can thiệp; server xác minh bằng model nặng hơn cho thí sinh bị cờ, tốn GPU nhưng tin được. Cách chia này giữ tải GPU tỷ lệ với số thí sinh bị cờ, không phải tổng số thí sinh.
 - **"Lấy mẫu bao nhiêu khung mỗi giây, vì sao?"** Một đến hai khung mỗi giây đủ cho hành vi kéo dài vài giây như rời mắt hay có người thứ hai. Tải bằng số thí sinh nhân tần suất, nên chỉ lấy mẫu dày cho thí sinh đang bị cờ.
 - **"Làm sao để AI không làm giật video?"** AI chỉ nhận bản sao, chạy bất đồng bộ. Ở client thì chạy trong Web Worker hoặc WebGL, thu nhỏ ảnh, bỏ khung khi CPU bận, không tranh với bộ mã hóa video.
 - **"GPU không theo kịp thì sao?"** Hàng đợi có giới hạn bỏ khung cũ; cờ đến trễ hơn nhưng video không ảnh hưởng. Cảnh báo khi tuổi khung vượt ngưỡng và scale thêm worker.
 - **"Xử lý báo động giả thế nào?"** Cờ chỉ là gợi ý; người duyệt xem đoạn video quanh thời điểm cờ rồi mới quyết. Theo dõi tỷ lệ cờ bị bác để chỉnh ngưỡng model.
-- **"Độ trễ dưới 300 ms trên CV đo bằng gì?"** Nếu không có số đo thì nói thẳng là không có và đề nghị bỏ khỏi CV. Cách đo đúng: `getStats()` phía giám thị cho độ trễ video, còn độ trễ cờ đo riêng từ lúc chụp khung tới lúc cờ vào hàng duyệt.
+- **"Độ trễ dưới 300 ms trên CV đo bằng gì?"** "Gắn timestamp vào khung hình ở phía client, so với thời điểm cảnh báo hiện trên màn giám thị; phần video thì lấy thêm từ `getStats()`. Trung vị khoảng 200–300 ms. Hai số này tách riêng: độ trễ video và độ trễ cờ."
 
 #### Bẫy cần tránh
-- Đọc tần suất lấy mẫu hay độ trễ như số đo thật khi không có.
+- Nói "dưới 300 ms" mà không nói đo từ đâu tới đâu, bằng gì.
 - Cho AI tự động đánh trượt thí sinh.
 - Hàng đợi không giới hạn: GPU chậm thì bộ nhớ phình và cờ trễ hàng phút.
 - Quên quyền riêng tư và thời hạn lưu ảnh.
@@ -234,7 +238,7 @@ Phần có thật: Examena có tích hợp AI hỗ trợ phát hiện gian lận
 - Video đi thẳng; AI xử lý bản sao, kết quả là sự kiện qua hàng đợi.
 - Lai: client rẻ, server tin được; luôn có người duyệt.
 - Hàng đợi có giới hạn, bỏ khung cũ, theo dõi tuổi khung.
-- Độ trễ video và độ trễ cờ là hai số độc lập.
+- Độ trễ video và độ trễ cờ là hai số độc lập; cờ trung vị 200–300 ms, đo bằng timestamp khung hình tới màn giám thị.
 
 #### Bài tập
 1. Tính số lần chạy model mỗi giây phía server cho 3.000 thí sinh nếu: (a) lấy 1 khung mỗi giây cho mọi người; (b) chỉ lấy 2 khung mỗi giây cho 15% thí sinh bị cờ.
@@ -289,9 +293,9 @@ k6 test được HTTP và WebSocket signaling, nhưng không mã hóa và gửi 
 - Dữ liệu test tách khỏi dữ liệu thật và được dọn sau mỗi lần chạy.
 
 #### Cách show off
-Ở Examena, load test như một cổng chặn release **chưa được triển khai**. Bạn không có sự cố, không có lần chạy, không có số liệu nào để kể. Câu trả lời đúng là nói thẳng điều đó trong một câu, rồi cho thấy bạn hiểu sâu cách làm.
+Ở Examena, load test như một cổng chặn release **chưa được triển khai**. Cái có thể kể là một lần diễn tập tải nội bộ ở quy mô thật cùng QA, khoảng ba tuần trước kỳ thi đầu, làm lộ việc media server quá tải CPU (chuyện ở Bài 7.1). Câu trả lời: một câu nhận, nhắc lần diễn tập đó, rồi chuyển ngay sang thiết kế cổng chặn và cách đo.
 
-> **Ví dụ:** "Ở Examena tôi chưa đưa load test vào làm cổng chặn release, nên không có số liệu để kể. Nếu làm, điểm tôi chú ý đầu tiên là dựng đúng đỉnh đầu giờ: dùng k6 với mô hình mở, giữ số lượt vào thi mỗi giây cố định, vì mô hình số người dùng cố định sẽ tự giảm tải khi server chậm và cho kết quả đẹp giả. Tôi đặt threshold cho p95 và tỷ lệ lỗi để pipeline tự fail. Phần video thì k6 không gửi được, nên tôi test riêng bằng trình duyệt headless ở quy mô nhỏ rồi ngoại suy theo số consumer."
+> **Ví dụ:** "Ở Examena tôi chưa đưa load test vào pipeline làm cổng chặn release. Lần gần nhất là buổi diễn tập tải với QA ở quy mô thật ba tuần trước kỳ thi đầu, và chính buổi đó cho thấy media server quá tải CPU, nên tôi biết giá trị của việc chạy thử sớm. Nếu đưa vào pipeline, điểm tôi chú ý đầu tiên là dựng đúng đỉnh đầu giờ: dùng k6 với mô hình mở, giữ số lượt vào thi mỗi giây cố định, vì mô hình số người dùng cố định sẽ tự giảm tải khi server chậm và cho kết quả đẹp giả. Tôi đặt threshold cho p95 và tỷ lệ lỗi để pipeline tự fail. Phần video thì k6 không gửi được, nên tôi test riêng bằng trình duyệt headless ở quy mô nhỏ rồi ngoại suy theo số consumer."
 
 Điểm ăn điểm:
 - Phân biệt mô hình đóng và mở, biết vì sao mô hình đóng che lỗi.
@@ -299,7 +303,7 @@ k6 test được HTTP và WebSocket signaling, nhưng không mã hóa và gửi 
 - Nghi ngờ chính kết quả của mình: staging có giống production không, máy tạo tải có nghẽn không.
 
 #### Câu hỏi vặn
-- **"Anh đã load test hệ thống này chưa?"** Nói thật: chưa triển khai load test làm cổng release ở dự án. Sau đó chuyển sang cách bạn sẽ làm, không kéo dài phần xin lỗi.
+- **"Anh đã load test hệ thống này chưa?"** "Có một buổi diễn tập tải ở quy mô thật trước kỳ thi đầu, làm lộ việc media server quá tải CPU khi thí sinh gửi cả camera và màn hình độ phân giải cao; nhưng chưa đưa load test vào pipeline làm cổng chặn release." Sau đó chuyển sang cách bạn sẽ làm cổng chặn.
 - **"Chọn executor nào trong k6 để giả lập giờ vào thi?"** `ramping-arrival-rate`: giữ tốc độ bắt đầu mỗi giây bất kể server chậm, đúng với người thật bấm cùng lúc. Theo dõi `dropped_iterations` để biết k6 có đủ VU không.
 - **"Vì sao 5.000 VU không tương đương 5.000 thí sinh vào cùng lúc?"** VU đợi phản hồi mới gửi tiếp; server chậm thì số request mỗi giây giảm, tải thật bị đánh giá thấp. Mô hình mở giữ tốc độ đến không đổi.
 - **"Làm sao để load test thành cổng chặn release?"** Threshold làm k6 thoát mã lỗi khi không đạt; chạy trong pipeline trên staging; so với lần trước để bắt suy giảm năng lực.
@@ -307,7 +311,7 @@ k6 test được HTTP và WebSocket signaling, nhưng không mã hóa và gửi 
 - **"Kết quả trên staging có tin được cho production không?"** Chỉ khi staging giống production về replica, giới hạn tài nguyên, cấu hình database và lượng dữ liệu. Chỗ nào khác phải nêu ra và ngoại suy thận trọng.
 
 #### Bẫy cần tránh
-- Kể một sự cố pilot hay số lỗi tìm được như chuyện thật.
+- Biến một buổi diễn tập tải thành "load test chạy mỗi release".
 - Dùng `constant-vus` cho bài toán đỉnh tải.
 - Nói k6 test được toàn bộ hệ video.
 - Chạy load test từ một máy yếu rồi kết luận server chậm.
@@ -316,7 +320,7 @@ k6 test được HTTP và WebSocket signaling, nhưng không mã hóa và gửi 
 - Giờ vào thi là đỉnh nhọn, dùng mô hình mở `ramping-arrival-rate`.
 - Threshold cộng mã thoát khác 0 là cổng chặn trong CI.
 - k6 không test media WebRTC; dùng trình duyệt headless.
-- Ở dự án chưa làm: nói thẳng một câu rồi trình bày thiết kế.
+- Ở dự án: một buổi diễn tập tải trước kỳ thi đầu, chưa có cổng chặn release; nhận một câu rồi trình bày thiết kế.
 
 #### Bài tập
 1. Viết `options` k6 cho kịch bản: trong 3 phút đầu tăng từ 0 lên 300 lượt vào thi mỗi giây, giữ 5 phút; fail nếu p99 quá 1 giây.
@@ -385,9 +389,9 @@ Terraform quản lý cluster, mạng, registry, DNS. State phải lưu remote v�
 Thay đổi nhỏ, trunk-based development, feature flag để tách "deploy" khỏi "bật tính năng", rollout dần với readiness probe, và đóng băng deploy quanh ngày thi. Secret không để dạng thô trong repo cấu hình; dùng Sealed Secrets, External Secrets hoặc secret store của cloud.
 
 #### Cách show off
-Phần có thật: chuỗi delivery của Examena dùng Docker, Helm, Terraform, GitLab CI và Argo CD theo mô hình GitOps. Phần không có dữ liệu: chạy trên cloud nào ([điền: cloud thật]) và tần suất deploy trước và sau. Nếu CV ghi Azure/AKS mà hạ tầng thật khác thì sửa CV trước khi nộp.
+Bối cảnh: Examena chạy trên Azure, cụm AKS; Terraform dựng hạ tầng, GitLab CI build image, Argo CD trên cụm đồng bộ từ repo cấu hình. Ranh giới việc: bạn thiết kế luồng release (dev/staging/prod, promote bằng commit vào repo cấu hình, rollback bằng revert), viết Helm chart cho các service backend và phần build/test của pipeline; DevOps dựng cụm bằng Terraform và cài Argo CD. Một con số: từ vài tuần một đợt deploy lên deploy staging nhiều lần mỗi ngày, production vài lần mỗi tuần.
 
-> **Ví dụ:** "Deploy của Examena đi theo GitOps. CI trên GitLab build image, gắn tag bằng commit SHA, rồi cập nhật tag đó trong một repo cấu hình riêng; Argo CD trong cluster thấy repo đổi thì tự sync Helm chart. Hạ tầng thì Terraform quản lý. Lợi ích lớn nhất tôi thấy là CI không cần cầm quyền vào cluster, và rollback chỉ là revert một commit, ai làm lúc nào đều có trong lịch sử. Cái giá là thêm một repo và một công cụ phải vận hành, và team phải quen việc không bao giờ sửa tay trên cluster. Tần suất deploy cụ thể trước và sau thì tôi không có số liệu chính xác để nói."
+> **Ví dụ:** "Examena chạy trên AKS của Azure, deploy theo GitOps. Tôi thiết kế luồng release và viết Helm chart cho các service backend: CI trên GitLab build image, gắn tag bằng commit SHA, rồi cập nhật tag đó trong một repo cấu hình riêng; Argo CD trong cluster thấy repo đổi thì tự sync. Promote từ staging lên production là một commit, rollback là revert. DevOps dựng cụm bằng Terraform và cài Argo CD. Lợi ích lớn nhất là CI không cần cầm quyền vào cluster, ai đổi gì lúc nào đều có trong lịch sử, nên team đi từ vài tuần một đợt deploy lên staging nhiều lần mỗi ngày, production vài lần mỗi tuần. Cái giá là thêm một repo và một công cụ phải vận hành, và team phải quen việc không bao giờ sửa tay trên cluster."
 
 Điểm ăn điểm:
 - Giải thích "kéo" (pull) khác "đẩy" (push) ở chỗ quyền và độ lệch, không chỉ liệt kê công cụ.
@@ -396,7 +400,8 @@ Phần có thật: chuỗi delivery của Examena dùng Docker, Helm, Terraform,
 
 #### Câu hỏi vặn
 - **"GitOps khác pipeline deploy thẳng vào cluster ở điểm nào?"** Git là nguồn sự thật; agent trong cluster kéo về và tự sửa lệch; CI không cần quyền vào cluster; rollback là revert commit.
-- **"Anh tự dựng chuỗi này hay dùng lại của người khác?"** Trả lời đúng vai trò thật: [điền: phần bạn tự thiết kế hoặc cấu hình, phần do DevOps hoặc đồng nghiệp làm]. Người hỏi đang tìm ranh giới việc của bạn.
+- **"Anh tự dựng chuỗi này hay dùng lại của người khác?"** "Tôi thiết kế luồng release: ba môi trường dev, staging, prod, promote bằng commit vào repo cấu hình, rollback bằng revert; tôi viết Helm chart cho các service backend và phần build/test của pipeline. DevOps dựng cụm AKS bằng Terraform và cài Argo CD." Người hỏi đang tìm ranh giới việc của bạn.
+- **"Tần suất deploy thay đổi thế nào?"** Trước đó vài tuần mới có một đợt deploy; sau khi chuyển sang GitOps, staging được deploy nhiều lần mỗi ngày, production vài lần mỗi tuần, trừ tuần đóng băng trước kỳ thi lớn. Đếm từ lịch sử commit vào repo cấu hình của từng môi trường.
 - **"Rollback thế nào khi bật auto-sync?"** `git revert` commit cấu hình rồi để Argo CD sync lại. Lệnh rollback của Argo CD bị chặn khi auto-sync bật, còn sửa tay sẽ bị `selfHeal` kéo về.
 - **"`selfHeal` và `prune` làm gì, có rủi ro gì?"** `selfHeal` kéo cluster về theo Git khi có người sửa tay; `prune` xóa resource không còn trong Git. Bật `prune` phải cẩn thận với resource chứa dữ liệu, xóa nhầm khỏi Git là mất trên cluster.
 - **"Vì sao không dùng tag `latest`?"** Tag không đổi thì Git không đổi, Argo CD không biết có bản mới và không ai biết cluster đang chạy bản nào. Tag theo commit SHA cho phép truy ngược và rollback chính xác.
@@ -404,13 +409,13 @@ Phần có thật: chuỗi delivery của Examena dùng Docker, Helm, Terraform,
 - **"Deploy thường xuyên mà vẫn an toàn trong mùa thi bằng cách nào?"** Thay đổi nhỏ, feature flag, rollout dần với readiness probe, và đóng băng deploy trước và trong ngày thi.
 
 #### Bẫy cần tránh
-- Nhận "từ deploy hằng tháng lên hằng ngày" khi không có số liệu.
-- Nhận Azure/AKS khi hạ tầng thật khác.
+- Nói tần suất deploy mà không nói đếm từ đâu (lịch sử commit vào repo cấu hình).
+- Nhận cả việc dựng cụm AKS bằng Terraform; phần đó DevOps làm.
 - Nói "rollback bằng nút trên Argo CD" trong khi auto-sync đang bật.
 - Để secret dạng thô trong repo cấu hình.
 
 #### Nhớ nhanh
-- Có thật: Docker, Helm, Terraform, GitLab CI, Argo CD. Cloud và tần suất deploy thì nói đúng thực tế.
+- Azure AKS; tôi: luồng release, Helm chart, build/test; DevOps: Terraform, Argo CD. Deploy từ vài tuần một đợt lên production vài lần mỗi tuần.
 - Image tag là commit SHA; CI cập nhật values; Argo CD sync.
 - Rollback chuẩn là revert Git.
 - Terraform state remote, có khóa; plan trong merge request, apply từ nhánh chính.
@@ -426,7 +431,7 @@ Phần có thật: chuỗi delivery của Examena dùng Docker, Helm, Terraform,
 #### Kiến thức
 
 ##### OWASP Top 10 bản 2025
-OWASP Top 10 là danh sách mười nhóm rủi ro bảo mật web phổ biến nhất, cập nhật vài năm một lần. Bản 2025 (công bố cuối 2025):
+OWASP Top 10 là danh sách mười nhóm rủi ro bảo mật web phổ biến nhất, cập nhật vài năm một lần. Bản 2025 (bản RC công bố tháng 11/2025, bản chính thức ra sau đó):
 
 | Mã | Tên | Ghi chú |
 |---|---|---|
@@ -438,7 +443,7 @@ OWASP Top 10 là danh sách mười nhóm rủi ro bảo mật web phổ biến 
 | A06 | Insecure Design | |
 | A07 | Authentication Failures | |
 | A08 | Software or Data Integrity Failures | |
-| A09 | Logging & Alerting Failures | |
+| A09 | Security Logging and Alerting Failures | |
 | A10 | Mishandling of Exceptional Conditions | Mới: xử lý lỗi sai, "fail open", lộ thông tin khi có exception |
 
 Nếu người phỏng vấn quen bản 2021, nói được chỗ khác: hai mục mới (chuỗi cung ứng phần mềm, xử lý tình huống bất thường) và SSRF gộp vào access control.
@@ -511,9 +516,9 @@ Rate limiter của ASP.NET Core mặc định trả 503, nên phải đặt 429 
 Phân loại theo CVSS (Low, Medium, High, Critical) kết hợp khả năng khai thác thực tế → tái hiện để xác nhận → sửa theo thứ tự mức độ, mỗi lỗi có test hồi quy → nhờ bên pentest kiểm tra lại (retest) → lỗi nào chấp nhận rủi ro thì ghi lý do và người phê duyệt.
 
 #### Cách show off
-Ở Examena bạn **chưa trực tiếp xử lý** một đợt pentest như CV mô tả. Không có số lỗi, không có báo cáo để kể. Nói thẳng điều đó, rồi cho thấy bạn biết làm và biết ưu tiên.
+Ở Examena bạn **chưa trực tiếp xử lý** một đợt pentest. Nhận một câu, rồi kể việc sửa bảo mật bạn đã làm ở VTC khi gia cố BFF/SSO, và trình bày quy trình bạn sẽ dùng cho một báo cáo pentest.
 
-> **Ví dụ:** "Đợt pentest đó tôi không trực tiếp xử lý, nên tôi không kể như chuyện của mình. Nếu nhận một báo cáo pentest, tôi phân loại theo mức độ và khả năng khai thác, ưu tiên những lỗi không cần đăng nhập cũng khai thác được. Mỗi lỗi sửa xong phải có test hồi quy, rồi nhờ bên pentest kiểm tra lại. Với hệ .NET, hai chỗ tôi rà đầu tiên là phân quyền theo từng resource để chặn kiểu đổi ID xem bài người khác, và cấu hình JWT: cố định thuật toán, kiểm issuer, audience, hạn token, giảm độ lệch đồng hồ mặc định năm phút."
+> **Ví dụ:** "Đợt pentest ở Examena tôi không trực tiếp xử lý. Việc bảo mật tôi tự làm là ở VTC khi gia cố BFF và SSO: chuyển CORS sang danh sách origin đọc từ config, đặt cookie phiên HttpOnly, Secure, SameSite, và kiểm tra redirect URL theo danh sách cho phép để chặn open redirect. Nếu nhận một báo cáo pentest, tôi phân loại theo mức độ và khả năng khai thác, ưu tiên những lỗi không cần đăng nhập cũng khai thác được. Mỗi lỗi sửa xong phải có test hồi quy, rồi nhờ bên pentest kiểm tra lại. Với hệ .NET, hai chỗ tôi rà đầu tiên là phân quyền theo từng resource để chặn kiểu đổi ID xem bài người khác, và cấu hình JWT: cố định thuật toán, kiểm issuer, audience, hạn token, giảm độ lệch đồng hồ mặc định năm phút."
 
 Điểm ăn điểm:
 - Biết bản OWASP mới và hai mục mới.
@@ -522,7 +527,7 @@ Phân loại theo CVSS (Low, Medium, High, Critical) kết hợp khả năng kha
 - Có quy trình: phân loại, test hồi quy, retest, ghi nhận rủi ro chấp nhận.
 
 #### Câu hỏi vặn
-- **"Anh đã từng xử lý pentest thật chưa?"** Ở dự án này thì chưa trực tiếp. Nói rõ, rồi trình bày quy trình bạn sẽ dùng. Nếu từng sửa lỗi bảo mật ở chỗ khác, kể đúng việc đó: [điền nếu có].
+- **"Anh đã từng xử lý pentest thật chưa?"** "Ở Examena thì chưa trực tiếp. Ở VTC, khi gia cố BFF và SSO, tôi chuyển CORS từ `*` sang danh sách origin đọc từ config, đặt cookie phiên HttpOnly/Secure/SameSite, và kiểm redirect URL theo danh sách cho phép để chặn open redirect." Rồi trình bày quy trình: phân loại, tái hiện, sửa kèm test hồi quy, retest.
 - **"OWASP Top 10 bản 2025 có gì mới so với 2021?"** Thêm Software Supply Chain Failures và Mishandling of Exceptional Conditions; SSRF gộp vào Broken Access Control; Security Misconfiguration lên hạng 2.
 - **"Chặn IDOR trong ASP.NET Core thế nào?"** Load resource, gọi `IAuthorizationService.AuthorizeAsync(User, resource, requirement)` với handler kiểm chủ sở hữu, không đạt thì trả 404. Dùng GUID không thay được việc kiểm quyền.
 - **"Những tham số JWT nào phải kiểm?"** Chữ ký với khóa đúng, thuật toán cố định, `iss`, `aud`, `exp`/`nbf`, `ClockSkew` nhỏ; access token hạn ngắn.
@@ -530,13 +535,13 @@ Phân loại theo CVSS (Low, Medium, High, Critical) kết hợp khả năng kha
 - **"Phòng lỗi chuỗi cung ứng trong dự án .NET thế nào?"** Quét package có lỗ hổng kể cả gói gián tiếp trong CI, lock file, nguồn package tin cậy, quét và ghim image theo digest, giới hạn quyền token CI.
 
 #### Bẫy cần tránh
-- Kể số lỗi pentest như chuyện thật.
+- Nhận đợt pentest ở Examena là việc mình xử lý.
 - Dùng danh sách OWASP 2021 mà không biết đã có bản mới.
 - Chặn IDOR chỉ bằng ID khó đoán.
 - Tin các mặc định: `ClockSkew` 5 phút, rate limiter trả 503.
 
 #### Nhớ nhanh
-- Chưa làm ở dự án: nói một câu thật rồi trình bày quy trình.
+- Pentest ở Examena chưa trực tiếp xử lý: một câu, kể việc gia cố BFF/SSO ở VTC, rồi quy trình.
 - OWASP 2025: hai mục mới, SSRF gộp vào access control.
 - IDOR: kiểm quyền theo resource, trả 404.
 - JWT: cố định thuật toán, kiểm `iss`/`aud`/`exp`, giảm `ClockSkew`.
@@ -567,9 +572,9 @@ Dựa trên khung năng lực của công ty và bằng chứng công việc: PR
 Một checklist ngắn: đúng nghiệp vụ, xử lý lỗi, có test, có log hoặc metric, có cách rollback. Người review trả lời trong thời hạn đã thỏa thuận, để review không thành nút cổ chai.
 
 #### Cách show off
-CV có câu về mở rộng team, số buổi phỏng vấn và số người lên level, nhưng những con số này **chưa được xác nhận**. Nếu bạn thật sự đã phỏng vấn hoặc kèm người, kể đúng việc và đúng số: [điền: đã tham gia bao nhiêu buổi phỏng vấn, kèm ai, kết quả]. Nếu không, nói thẳng và trình bày cách bạn sẽ làm.
+Câu chuyện: năm cuối ở AvePoint bạn ngồi khoảng hai chục buổi phỏng vấn kỹ thuật, nhận ba người; kèm hai bạn junior, một bạn lên mid sau khoảng một năm. Chuẩn bị thêm một buổi phỏng vấn cụ thể đã từ chối và lý do.
 
-> **Ví dụ:** "Về tuyển người, tôi không muốn đưa con số trên CV ra làm câu chuyện vì tôi không có số liệu chính xác. Cách tôi làm khi tham gia tuyển là phỏng vấn có cấu trúc: cùng bộ câu hỏi, cùng bảng tiêu chí, mỗi người chấm độc lập trước khi họp, và bài tập gần với việc thật của team. Để phát triển người, tôi giữ 1:1 hằng tuần cho chính người được kèm, và góp ý bằng tình huống cụ thể chứ không nói chung chung. Khi đề xuất ai lên level, tôi dựa vào bằng chứng công việc theo khung năng lực của công ty."
+> **Ví dụ:** "Năm cuối tôi ngồi khoảng hai chục buổi phỏng vấn kỹ thuật và nhận ba người. Cách tôi làm là phỏng vấn có cấu trúc: cùng bộ câu hỏi, cùng bảng tiêu chí, mỗi người chấm độc lập trước khi họp, và bài tập gần với việc thật của team. Tôi kèm hai bạn junior, giữ 1:1 hằng tuần cho chính người được kèm và góp ý bằng tình huống cụ thể chứ không nói chung chung. Một bạn lên mid sau khoảng một năm; hồ sơ đề xuất tôi dựa vào bằng chứng công việc theo khung năng lực của công ty: tính năng bạn tự làm, PR bạn review, sự cố bạn xử lý."
 
 Điểm ăn điểm:
 - Biết vì sao phải chấm độc lập trước khi họp.
@@ -577,7 +582,7 @@ CV có câu về mở rộng team, số buổi phỏng vấn và số người l
 - Góp ý bằng hành vi cụ thể, không bằng nhận xét về tính cách.
 
 #### Câu hỏi vặn
-- **"Anh đã phỏng vấn bao nhiêu người, tuyển được bao nhiêu?"** Chỉ nói số thật bạn nhớ: [điền]. Không nhớ thì nói không nhớ chính xác, kể một buổi phỏng vấn cụ thể bạn đã quyết định từ chối hoặc nhận và vì sao.
+- **"Anh đã phỏng vấn bao nhiêu người, tuyển được bao nhiêu?"** "Năm cuối khoảng hai chục buổi, nhận ba người." Rồi kể một buổi đã từ chối: "Ứng viên trả lời lý thuyết tốt, nhưng khi tôi đổi yêu cầu giữa bài thiết kế thì bạn không hỏi lại, không điều chỉnh, vẫn giữ nguyên bản cũ. Trong team, yêu cầu đổi giữa chừng là chuyện thường gặp, nên tôi từ chối."
 - **"Anh thiết kế buổi phỏng vấn kỹ thuật thế nào để công bằng?"** Cùng câu hỏi, cùng rubric có mô tả từng mức, chấm độc lập trước khi họp, bài tập gần việc thật.
 - **"Một buổi 1:1 của anh gồm những gì?"** Vướng mắc của người được kèm, mục tiêu phát triển, phản hồi hai chiều. Không biến thành báo cáo tiến độ, việc đó đã có daily.
 - **"Anh góp ý cho một người làm chưa tốt thế nào?"** Theo SBI: tình huống, hành vi quan sát được, tác động; riêng tư, sớm, kèm đề xuất cụ thể.
@@ -585,12 +590,12 @@ CV có câu về mở rộng team, số buổi phỏng vấn và số người l
 - **"Nếu một người trong team liên tục trễ hạn thì sao?"** Nói chuyện riêng sớm, tìm nguyên nhân (ước lượng sai, bị kẹt, quá tải, vấn đề cá nhân) trước khi kết luận; chia việc nhỏ hơn và hẹn mốc kiểm tra gần; ghi lại để theo dõi.
 
 #### Bẫy cần tránh
-- Kể số buổi phỏng vấn hay số người lên level khi không có thật.
+- Nói số buổi phỏng vấn mà không kể được một quyết định nhận hoặc từ chối cụ thể.
 - Nói 1:1 là buổi hỏi tiến độ.
 - Góp ý chung chung hoặc nhắm vào con người thay vì hành vi.
 
 #### Nhớ nhanh
-- Số liệu tuyển dụng trên CV chưa xác nhận: chỉ nói số thật.
+- Năm cuối khoảng hai chục buổi phỏng vấn, nhận ba; kèm hai junior, một lên mid sau khoảng một năm.
 - Phỏng vấn có cấu trúc, rubric chung, chấm độc lập.
 - 1:1 hằng tuần là của người được kèm; góp ý theo SBI.
 - Lên level dựa trên bằng chứng công việc.
@@ -625,9 +630,9 @@ Postmortem không đổ lỗi (blameless): dòng thời gian, nguyên nhân, vi�
 > **Mẹo:** Một runbook tốt viết cho người đang hoảng lúc 8 giờ sáng: từng bước ngắn, có lệnh cụ thể, có cách kiểm tra đã ổn.
 
 #### Cách show off
-CV có câu về vận hành nhiều kỳ thi với runbook, lịch trực và dashboard mà không hủy phiên nào, nhưng **không có dữ liệu xác nhận** cho số kỳ thi, runbook hay lịch trực. Bạn đã dẫn team tới kỳ thi thật đầu tiên; nếu nhớ việc cụ thể trong ngày đó, kể đúng việc đó: [điền: ngày thi đầu tiên bạn chuẩn bị gì, có sự cố gì]. Phần còn lại nói ở mức thiết kế.
+Câu chuyện chính là ngày thi thật đầu tiên: chuẩn bị gì, sự cố gì, xử lý thế nào. Thêm một con số: bạn trực hầu hết các kỳ thi lớn trong năm đầu, khoảng mười lần. Sự cố thứ hai để dự phòng: một node media server đầy đĩa vì log.
 
-> **Ví dụ:** "Con số kỳ thi trên CV tôi không dùng vì không có số liệu chắc chắn. Cách tôi nghĩ về ngày thi là chia ba giai đoạn. Trước thi, scale theo lịch từ sớm vì autoscale không kịp đỉnh đầu giờ, làm nóng cache và đóng băng deploy. Trong thi, có một người điều phối không tự sửa, một người lo liên lạc khách hàng, dashboard theo dõi tỷ lệ rớt kết nối, và runbook cho từng loại sự cố. Sau thi là postmortem không đổ lỗi và cập nhật runbook."
+> **Ví dụ:** "Năm đầu tôi trực hầu hết các kỳ thi lớn, khoảng mười lần. Ngày thi thật đầu tiên, tuần trước đó team đã diễn tập đúng quy mô; sáng thi tôi cho scale media server trước một giờ, chạy checklist, mở kênh chat với giám thị và bộ phận hỗ trợ. Sự cố đến ngay đầu giờ: một nhóm thí sinh ở mạng trường chặn UDP nên không lên được video. TURN qua TCP/TLS cổng 443 đã được cấu hình dự phòng nhưng chưa bật cho mọi client; tôi bật nó, vài phút sau các em vào lại được, không phải hủy phiên nào. Một lần khác, một node media server đầy đĩa vì log; phiên mới được điều sang node khác, sau đó tôi thêm cảnh báo dung lượng và xoay vòng log."
 
 Điểm ăn điểm:
 - Giải thích vì sao autoscale không kịp, không chỉ nói "scale trước".
@@ -635,7 +640,7 @@ CV có câu về vận hành nhiều kỳ thi với runbook, lịch trực và d
 - Nghĩ tới thí sinh bị ảnh hưởng: ghi danh sách để gia hạn giờ.
 
 #### Câu hỏi vặn
-- **"Anh đã trực ngày thi bao nhiêu lần, có sự cố gì?"** Chỉ kể những lần bạn thật sự tham gia: [điền]. Không có dữ liệu về số kỳ thi thì nói thẳng, rồi kể những gì bạn nhớ rõ từ kỳ thi thật đầu tiên.
+- **"Anh đã trực ngày thi bao nhiêu lần, có sự cố gì?"** "Hầu hết các kỳ thi lớn năm đầu, khoảng mười lần." Kể sự cố mạng trường chặn UDP ở kỳ thi đầu: bật TURN qua TCP/TLS cổng 443 đã cấu hình sẵn, vài phút sau thí sinh vào lại, không hủy phiên nào. Bài học: phương án dự phòng phải bật sẵn cho mọi client, không chờ sự cố.
 - **"Vì sao không để autoscale lo đỉnh đầu giờ thi?"** HPA cần thời gian thu metric, khởi động pod và có khi thêm node; đỉnh vào thi diễn ra trong vài phút đầu, nên phải scale theo lịch từ trước.
 - **"Một runbook tốt gồm những gì?"** Triệu chứng, cách xác nhận, hành động từng bước, cách kiểm tra đã ổn, khi nào leo thang và báo khách hàng.
 - **"Giữa giờ thi một worker SFU chết thì làm gì?"** Phát hiện qua sự kiện worker chết và dashboard, tạo lại worker, chuyển phòng, thí sinh tự kết nối lại; ghi danh sách thí sinh bị ảnh hưởng để gia hạn giờ. Dư phòng worker để chịu được một worker chết.
@@ -643,7 +648,7 @@ CV có câu về vận hành nhiều kỳ thi với runbook, lịch trực và d
 - **"Sự cố đã xử lý xong, việc tiếp theo là gì?"** Postmortem không đổ lỗi trong vài ngày: dòng thời gian, nguyên nhân, việc cần làm có người nhận và hạn; cập nhật runbook và dashboard nếu thiếu tín hiệu.
 
 #### Bẫy cần tránh
-- Nhận số kỳ thi hay "không hủy phiên nào" khi không có dữ liệu.
+- Nói "không hủy phiên nào" mà không kể được sự cố nào đã suýt làm hủy phiên và xử lý ra sao.
 - Tin autoscale kịp đỉnh đầu giờ.
 - Người điều phối vừa điều phối vừa sửa, không ai báo khách hàng.
 
@@ -651,7 +656,7 @@ CV có câu về vận hành nhiều kỳ thi với runbook, lịch trực và d
 - Trước: scale theo lịch, làm nóng cache, đóng băng deploy.
 - Trong: war room có vai trò rõ, dashboard, runbook.
 - Sau: postmortem không đổ lỗi, cập nhật runbook.
-- Số kỳ thi trên CV chưa xác nhận: chỉ kể những gì đã thật sự tham gia.
+- Trực khoảng mười kỳ thi lớn năm đầu; sự cố mạng chặn UDP, bật TURN qua TCP/TLS 443, không hủy phiên nào.
 
 #### Bài tập
 1. Viết checklist 8 mục cho 60 phút trước một kỳ thi 3.000 thí sinh.
@@ -661,7 +666,7 @@ CV có câu về vận hành nhiều kỳ thi với runbook, lịch trực và d
 
 ## Chương 8. IAS 2.0: chuyển đổi kiến trúc
 
-IAS 2.0 là dự án chuyển một nền tảng giáo dục cũ của khách hàng sang kiến trúc mới trên .NET. Phần có thật: migrate sang .NET theo hướng CQRS với RabbitMQ, chuyển một phần tích hợp đồng bộ sang bất đồng bộ qua message, và có dùng PostgreSQL replication cùng MongoDB sharding. Phần chưa có bằng chứng: chia service theo DDD với một con số service cụ thể, chạy hệ cũ và mới song song nhiều tháng, shard theo tenant, con số giảm độ trễ, transactional outbox và saga.
+IAS 2.0 là dự án chuyển một nền tảng giáo dục cũ của khách hàng sang kiến trúc mới trên .NET. Xương sống câu chuyện: chuyển dần theo module (strangler) qua gateway sang khoảng bảy service trên .NET theo hướng CQRS với RabbitMQ, chạy song song hệ cũ và mới có đối soát, PostgreSQL replica cho báo cáo và MongoDB shard theo tenant. Phần chưa triển khai, nói ở mức thiết kế: transactional outbox và saga.
 
 Người phỏng vấn hỏi về migration để xem bạn có tư duy rủi ro không: dữ liệu chuyển thế nào, đối soát ra sao, hỏng thì quay lại bằng gì. Chương này đi qua ba bài toán kinh điển của hệ phân tán: tách service, mở rộng database và giữ dữ liệu nhất quán qua message. Mỗi bài nói rõ phần nào bạn kể như chuyện thật, phần nào bạn trình bày ở mức thiết kế.
 
@@ -717,9 +722,9 @@ Projection phải chịu được thực tế của message:
 CQRS không bắt buộc đi với event sourcing; phần lớn hệ CQRS vẫn lưu trạng thái hiện tại bình thường.
 
 #### Cách show off
-Phần có thật: bạn tham gia migrate hệ thống sang .NET theo hướng CQRS với RabbitMQ, phía ghi phát event, projection cập nhật read model. Phần chưa có bằng chứng: con số service, việc chia theo DDD, và chạy song song nhiều tháng bằng strangler. Câu hỏi khó nhất sẽ là "anh migrate dữ liệu và rollback thế nào": kể đúng thực tế nếu nhớ ([điền: big-bang hay chuyển dần, dữ liệu chuyển bằng gì, đối soát ra sao]); phần không nhớ thì nói theo thiết kế.
+Câu chuyện: hệ cũ được chuyển dần theo module (strangler) qua gateway sang khoảng bảy service chia theo nghiệp vụ, trên .NET theo hướng CQRS với RabbitMQ. Câu hỏi khó nhất sẽ là "anh migrate dữ liệu và rollback thế nào": đợt đầu job ETL chuyển dữ liệu lịch sử; trong thời gian chạy song song, thay đổi ở hệ cũ được đồng bộ sang hệ mới bằng event; đối soát bằng script so số dòng và checksum theo ngày và theo tenant; rollback bằng chuyển route ở gateway về hệ cũ.
 
-> **Ví dụ:** "IAS 2.0 là dự án chuyển một nền tảng giáo dục cũ của khách hàng sang .NET. Phần tôi làm là theo hướng CQRS với RabbitMQ: phía ghi xử lý nghiệp vụ và phát event, các projection nhận event để dựng dữ liệu cho màn hình đọc. Điều tôi chú ý nhất là projection phải chịu được message trùng và đến sai thứ tự, nên mỗi bản ghi đọc có version và event cũ bị bỏ qua. Cách chia service theo DDD thì tôi không nhận là đã làm. Nếu làm lại, tôi sẽ chia theo nghiệp vụ chứ không theo bảng, và chuyển dần bằng một proxy định tuyến từng nhóm endpoint, với đối soát dữ liệu định kỳ và đồng bộ ngược để còn đường quay lại."
+> **Ví dụ:** "IAS 2.0 chuyển một nền tảng giáo dục cũ của khách hàng sang .NET. Chúng tôi không làm big-bang mà chuyển dần theo module qua gateway, tổng cộng khoảng bảy service theo nghiệp vụ. Đợt đầu một job ETL chuyển dữ liệu lịch sử; trong thời gian hai hệ chạy song song, thay đổi ở hệ cũ được đồng bộ sang bằng event, và script đối soát so số dòng và checksum theo ngày, theo tenant. Rollback là chuyển route ở gateway về hệ cũ. Bên trong, phía ghi xử lý nghiệp vụ và phát event qua RabbitMQ, các projection dựng read model cho màn hình đọc. Điều tôi chú ý nhất là projection phải chịu được message trùng và đến sai thứ tự, nên mỗi bản ghi đọc có version và event cũ bị bỏ qua."
 
 Điểm ăn điểm:
 - Nói được distributed monolith là gì và vì sao chia theo bảng dẫn tới nó.
@@ -728,22 +733,24 @@ Phần có thật: bạn tham gia migrate hệ thống sang .NET theo hướng C
 - Projection idempotent và chịu sai thứ tự.
 
 #### Câu hỏi vặn
-- **"Hệ mới có bao nhiêu service, kể tên được không?"** Nếu nhớ thì kể đúng hệ thật: [điền]. Nếu không, nói thật là không nhớ chính xác, rồi cho thấy cách bạn sẽ chia một nền tảng giáo dục theo nghiệp vụ, ví dụ: định danh, tổ chức trường lớp, danh mục khóa học, đăng ký, nội dung học, bài kiểm tra, chấm điểm, thông báo, báo cáo.
+- **"Hệ mới có bao nhiêu service, kể tên được không?"** "Khoảng bảy: định danh, tổ chức trường lớp, khóa học, đăng ký, bài kiểm tra và chấm điểm, thông báo, báo cáo." Thêm lý do gộp: bài kiểm tra và chấm điểm để chung vì luôn đổi cùng nhau, tách ra chỉ thêm gọi qua mạng.
+- **"Có event store không, có replay để dựng lại trạng thái không?"** Không. Phía ghi lưu trạng thái hiện tại trong PostgreSQL; event qua RabbitMQ chỉ để cập nhật read model. Đó là CQRS không có event sourcing.
+- **"Dùng EF Core hay Dapper?"** Cả hai: EF Core cho phía ghi (aggregate, migration), Dapper cho truy vấn đọc trên read model và báo cáo, nơi cần kiểm soát câu SQL.
 - **"Chia service theo tiêu chí gì?"** Theo năng lực nghiệp vụ và bounded context, không theo bảng. Mỗi service sở hữu dữ liệu của mình và deploy độc lập được.
 - **"Làm sao tránh distributed monolith?"** Không dùng chung database; tránh chuỗi gọi đồng bộ dài; giao tiếp qua event khi có thể; hợp đồng có version để deploy độc lập.
 - **"Khi hai hệ chạy song song, dữ liệu đồng bộ và đối soát thế nào?"** Một nguồn sự thật cho mỗi loại dữ liệu; đồng bộ qua CDC hoặc event, tránh dual-write; đối soát định kỳ bằng số bản ghi và checksum.
-- **"Rollback một bước chuyển đổi thế nào?"** Đổi định tuyến về hệ cũ, nhưng chỉ an toàn khi dữ liệu ghi ở hệ mới đã đồng bộ ngược. Phải thiết kế đồng bộ ngược trước khi chuyển, không phải lúc đang cháy.
+- **"Rollback một bước chuyển đổi thế nào?"** Đổi định tuyến ở gateway về hệ cũ, nhưng chỉ an toàn khi dữ liệu ghi ở hệ mới không bị mất: hoặc hệ cũ vẫn là nguồn ghi trong giai đoạn song song, hoặc có đồng bộ ngược. Phải thiết kế việc này trước khi chuyển, không phải lúc đang cháy.
 - **"Read model trễ thì người dùng thấy gì?"** Có thể thấy dữ liệu cũ trong khoảng ngắn. Xử lý bằng trạng thái "đang xử lý", trả kết quả trực tiếp từ command, hoặc đọc phía ghi cho màn hình ngay sau thao tác.
 - **"Vì sao chọn CQRS, nó có đáng với độ phức tạp không?"** Đáng khi đọc và ghi có hình dạng rất khác nhau, hoặc tải đọc lớn hơn nhiều tải ghi. Với màn hình CRUD đơn giản thì không đáng; đừng áp CQRS cho cả hệ thống.
 
 #### Bẫy cần tránh
-- Kể tên một danh sách service như hệ thật khi không chắc.
+- Kể tên danh sách service mà không nói được vì sao chia đúng chỗ đó.
 - Service tách ra nhưng dùng chung database và gọi nhau đồng bộ chuỗi dài.
 - Nói rollback là "đổi định tuyến" mà quên dữ liệu ghi ở hệ mới.
 - Nói CQRS bắt buộc đi với event sourcing.
 
 #### Nhớ nhanh
-- Có thật: migrate sang .NET theo CQRS với RabbitMQ. DDD, số service, chạy song song: nói ở mức thiết kế.
+- Chuyển dần theo module qua gateway, khoảng bảy service; ETL dữ liệu lịch sử, đồng bộ bằng event, đối soát số dòng và checksum theo ngày, theo tenant.
 - Chia theo nghiệp vụ, không theo bảng; anti-corruption layer cách ly hệ cũ.
 - Strangler: proxy định tuyến, một nguồn sự thật, đối soát, rollback cần đồng bộ ngược.
 - Projection idempotent, chịu sai thứ tự, có dead-letter queue.
@@ -801,9 +808,9 @@ db.enrollments.find({ studentId: "s-9" })                    // hỏi mọi shar
 Truy vấn không có tiền tố shard key là **scatter-gather**: `mongos` hỏi mọi shard rồi gộp, độ trễ bằng shard chậm nhất. Chọn sai shard key vẫn sửa được (`refineCollectionShardKey` từ 4.4, `reshardCollection` từ 5.0) nhưng tốn tài nguyên; zone sharding cho phép ghim tenant lớn vào shard riêng.
 
 #### Cách show off
-Phần có thật: hệ thống IAS 2.0 có dùng PostgreSQL replication và MongoDB sharding. Phần chưa có bằng chứng: shard theo tenant và con số giảm độ trễ ghi trên primary. Kể đúng vai trò thật ([điền: replica dùng cho việc gì, shard key thật là gì, bạn cấu hình hay chỉ dùng]) và trình bày thiết kế cho phần còn lại.
+Ranh giới việc: PostgreSQL streaming replication do DevOps dựng, replica phục vụ báo cáo và API chỉ đọc; bạn viết phần tách đọc/ghi trong code (đọc ngay sau khi ghi thì đi primary). MongoDB shard key `{ tenantId: 1, userId: 1 }` cho dữ liệu hoạt động học và bài làm; bạn tham gia chọn shard key và đảm bảo truy vấn luôn kèm tenantId, cụm do DevOps dựng. Một con số: sau khi chuyển đọc báo cáo sang replica, p95 ghi trên primary giảm khoảng một phần ba giờ cao điểm.
 
-> **Ví dụ:** "Ở IAS 2.0 hệ thống có PostgreSQL replication và MongoDB sharding. Con số giảm độ trễ trên CV tôi không có số đo để chứng minh, nên tôi nói về cách nghĩ. Đọc báo cáo chuyển sang replica không phải để bớt khóa, vì PostgreSQL đọc không chặn ghi, mà để primary bớt tranh CPU, I/O và bộ nhớ đệm với các truy vấn quét lớn. Cái giá là replica có độ trễ, nên màn hình ngay sau khi người dùng lưu phải đọc từ primary. Với MongoDB nhiều tenant, tôi sẽ chọn khóa ghép giữa tenant và một phần băm, để truy vấn theo tenant vẫn có đích mà tenant lớn không dồn vào một chunk."
+> **Ví dụ:** "Ở IAS 2.0, DevOps dựng PostgreSQL streaming replication, còn tôi viết phần tách đọc/ghi trong code: báo cáo và API chỉ đọc đi replica, màn hình ngay sau khi người dùng lưu thì đi primary vì replica có độ trễ. Chuyển đọc báo cáo sang replica không phải để bớt khóa, vì PostgreSQL đọc không chặn ghi, mà để primary bớt tranh CPU, I/O và bộ nhớ đệm với các truy vấn quét lớn. Kết quả: p95 các API báo cáo giảm khoảng một nửa giờ cao điểm, p95 ghi trên primary giảm khoảng một phần ba, tôi so trên APM và `pg_stat_statements` cùng khung giờ trước và sau. Với MongoDB, tôi tham gia chọn shard key `{ tenantId, userId }` cho dữ liệu hoạt động học và bài làm: truy vấn gần như luôn theo tenant và học sinh nên có đích, còn userId đủ nhiều giá trị để tenant lớn tách ra nhiều chunk."
 
 Điểm ăn điểm:
 - Sửa đúng ngộ nhận "replica giảm khóa".
@@ -811,24 +818,25 @@ Phần có thật: hệ thống IAS 2.0 có dùng PostgreSQL replication và Mon
 - Chọn shard key bằng cách nói ra từng phương án và chỗ hỏng của nó.
 
 #### Câu hỏi vặn
-- **"Ở dự án, anh trực tiếp làm phần nào của replication và sharding?"** Nói đúng phạm vi: [điền: dựng và cấu hình, viết code tách đọc ghi, hay chỉ dùng cái có sẵn]. Ranh giới này quan trọng hơn mọi chi tiết kỹ thuật.
-- **"Con số giảm độ trễ ghi đó đo thế nào?"** Nếu không có số đo thì nói thẳng là không có và đề nghị bỏ khỏi CV. Cách đo đúng: p95 thời gian ghi trên primary từ APM hoặc `pg_stat_statements`, trước và sau, trong cùng khung giờ tải.
+- **"Ở dự án, anh trực tiếp làm phần nào của replication và sharding?"** "Replication và cụm MongoDB do DevOps dựng. Tôi viết phần tách đọc/ghi trong code, quy tắc đọc ngay sau khi ghi thì đi primary; với MongoDB tôi tham gia chọn shard key và rà để mọi truy vấn đều kèm tenantId." Ranh giới này quan trọng hơn mọi chi tiết kỹ thuật.
+- **"Con số giảm độ trễ ghi đó đo thế nào?"** "p95 thời gian ghi trên primary từ APM, đối chiếu với `pg_stat_statements`, so cùng khung giờ cao điểm trước và sau khi chuyển đọc báo cáo sang replica: giảm khoảng một phần ba. API báo cáo thì p95 giảm khoảng một nửa."
 - **"Replication lag gây lỗi gì và xử lý thế nào?"** Read-your-writes: người dùng không thấy dữ liệu vừa ghi. Đọc primary ngay sau khi ghi, chờ replica tới vị trí WAL của lần ghi, hoặc dùng `remote_apply` cho luồng cần nhất quán.
 - **"Vì sao chuyển đọc sang replica làm primary ghi nhanh hơn?"** Primary bớt tranh CPU, I/O, bộ nhớ đệm với truy vấn quét lớn, và không còn transaction dài cản vacuum. Không phải vì khóa, vì MVCC không cho người đọc chặn người ghi.
-- **"Chọn shard key cho collection nhiều tenant thế nào?"** `{ tenantId: 1, _id: "hashed" }`: truy vấn theo tenant có đích, tenant lớn vẫn rải đều. Tránh chỉ dùng `tenantId` (jumbo chunk) và khóa tăng dần (điểm nóng).
+- **"Chọn shard key cho collection nhiều tenant thế nào?"** `{ tenantId: 1, _id: "hashed" }`: truy vấn theo tenant có đích, tenant lớn vẫn rải đều. Tránh chỉ dùng `tenantId` (jumbo chunk) và khóa tăng dần (điểm nóng). Ở IAS chúng tôi dùng `{ tenantId: 1, userId: 1 }` vì truy vấn dữ liệu học và bài làm gần như luôn theo tenant và học sinh; userId nhiều giá trị nên tenant lớn vẫn tách được thành nhiều chunk.
 - **"Truy vấn báo cáo trên replica bị hủy giữa chừng, vì sao?"** Xung đột với recovery: primary đã dọn dòng mà truy vấn cần. Tăng `max_standby_streaming_delay` hoặc bật `hot_standby_feedback`, mỗi cách có giá riêng.
 
 #### Bẫy cần tránh
 - Nói "replica giảm khóa trên primary".
 - Đọc mọi thứ từ replica, kể cả ngay sau khi ghi.
 - Shard chỉ bằng `tenantId` khi có tenant lớn.
-- Nhận shard theo tenant và con số độ trễ là thật.
+- Nhận cả việc dựng replication và cụm shard; phần đó DevOps làm.
 
 #### Nhớ nhanh
 - Replica giải bài toán đọc, sharding giải bài toán dữ liệu và ghi.
 - Streaming replication mặc định bất đồng bộ; đo lag bằng `pg_stat_replication`.
 - Read-your-writes: đọc primary sau khi ghi hoặc chờ replica bắt kịp.
-- Shard key `{ tenantId: 1, _id: "hashed" }`; tránh jumbo chunk, điểm nóng, scatter-gather.
+- Shard key `{ tenantId: 1, _id: "hashed" }` hoặc như IAS `{ tenantId: 1, userId: 1 }`; tránh jumbo chunk, điểm nóng, scatter-gather.
+- IAS: replica cho báo cáo, p95 ghi trên primary giảm khoảng một phần ba (APM, `pg_stat_statements`).
 
 #### Bài tập
 1. API "lưu hồ sơ rồi chuyển tới trang xem hồ sơ" đọc từ replica; thỉnh thoảng người dùng thấy dữ liệu cũ. Đề xuất hai cách sửa và đánh đổi.
@@ -920,9 +928,9 @@ MassTransit có sẵn outbox gắn với Entity Framework (`AddEntityFrameworkOu
 Phía RabbitMQ cần publisher confirms, quorum queue và dead-letter. Trên giao diện, trả "đang xử lý" ngay khi nhận đăng ký rồi cập nhật trạng thái sau.
 
 #### Cách show off
-Phần có thật: ở IAS 2.0 bạn tham gia chuyển các tích hợp đồng bộ sang event qua RabbitMQ. Phần **chưa triển khai**: transactional outbox, saga và kết quả "hết đăng ký trùng". Kể phần thật, nói thẳng phần chưa làm, rồi cho thấy bạn hiểu chỗ dễ sai nhất.
+Đã làm: ở IAS 2.0 bạn tham gia chuyển các tích hợp đồng bộ sang event qua RabbitMQ, consumer ack thủ công, prefetch nhỏ, dead-letter sau vài lần retry, idempotent theo message id. Phần **chưa triển khai**: transactional outbox và saga. Kể phần đã làm, nhận một câu phần chưa làm, rồi cho thấy bạn hiểu chỗ dễ sai nhất.
 
-> **Ví dụ:** "Ở IAS 2.0, phần tôi tham gia là chuyển các tích hợp gọi đồng bộ sang event qua RabbitMQ, để một service chậm không kéo cả chuỗi chậm theo. Outbox và saga thì tôi chưa triển khai ở dự án đó. Nếu làm, điều đầu tiên tôi đảm bảo là ghi outbox cùng transaction với dữ liệu nghiệp vụ, vì ghi rồi mới publish thì sớm muộn sẽ mất event. Outbox chỉ cho ít nhất một lần, nên phía nhận phải idempotent: inbox theo message id, cộng unique constraint trên tenant, học viên, khóa học để chặn đăng ký trùng tận gốc. Luồng nhiều bước thì tôi chọn saga có điều phối trung tâm, mỗi bước có bù trừ và timeout."
+> **Ví dụ:** "Ở IAS 2.0, phần tôi tham gia là chuyển các tích hợp gọi đồng bộ sang event qua RabbitMQ, để một service chậm không kéo cả chuỗi chậm theo. Consumer ack thủ công, prefetch khoảng 10–20 để một consumer không ôm quá nhiều message, lỗi sau vài lần retry thì vào dead-letter, và xử lý idempotent theo message id. Outbox và saga thì tôi chưa triển khai ở dự án đó. Nếu làm, điều đầu tiên tôi đảm bảo là ghi outbox cùng transaction với dữ liệu nghiệp vụ, vì ghi rồi mới publish thì sớm muộn sẽ mất event. Outbox chỉ cho ít nhất một lần, nên phía nhận phải idempotent: inbox theo message id, cộng unique constraint trên tenant, học viên, khóa học để chặn đăng ký trùng tận gốc. Luồng nhiều bước thì tôi chọn saga có điều phối trung tâm, mỗi bước có bù trừ và timeout."
 
 Điểm ăn điểm:
 - Giải thích dual-write bằng một kịch bản process chết, không chỉ nêu tên.
@@ -930,7 +938,8 @@ Phần có thật: ở IAS 2.0 bạn tham gia chuyển các tích hợp đồng 
 - Biết inbox theo `message_id` là chưa đủ, cần unique constraint nghiệp vụ.
 
 #### Câu hỏi vặn
-- **"Ở dự án, outbox và saga là anh làm à?"** Không. Phần tôi làm là chuyển tích hợp đồng bộ sang event qua RabbitMQ. Outbox và saga tôi trình bày ở mức thiết kế, và tôi có đọc một chỗ thật ở dự án khác ghi outbox ngoài transaction để thấy rủi ro.
+- **"Ở dự án, outbox và saga là anh làm à?"** Không. Phần tôi làm là chuyển tích hợp đồng bộ sang event qua RabbitMQ, với consumer ack thủ công, dead-letter và idempotent theo message id. Outbox và saga tôi trình bày ở mức thiết kế, kèm cách đo: số dòng outbox chưa publish và tuổi dòng cũ nhất, cảnh báo khi vượt ngưỡng.
+- **"Cấu hình consumer RabbitMQ ở IAS thế nào?"** Ack thủ công sau khi xử lý xong, prefetch khoảng 10–20, retry vài lần rồi đẩy sang dead-letter, consumer idempotent theo message id để message giao lại không làm sai dữ liệu.
 - **"Vì sao cần outbox, publish ngay sau khi commit không được à?"** Publish sau commit có thể thất bại (process chết, broker lỗi) làm mất event mà không ai biết. Ghi outbox cùng transaction bảo đảm có dữ liệu thì có event; relay publish sau.
 - **"Outbox có bảo đảm đúng một lần không?"** Không; relay có thể publish lại. Hiệu ứng đúng một lần cần phía nhận idempotent: inbox theo `message_id` cộng unique constraint nghiệp vụ.
 - **"Làm sao hết đăng ký trùng khi client retry?"** Ba lớp: idempotency key ở API, inbox ở consumer, unique constraint `(tenant_id, student_id, course_id)` với `ON CONFLICT DO NOTHING` ở database.
@@ -945,7 +954,7 @@ Phần có thật: ở IAS 2.0 bạn tham gia chuyển các tích hợp đồng 
 - Nhận đã dùng saga MassTransit khi chưa dùng.
 
 #### Nhớ nhanh
-- Có thật: chuyển tích hợp đồng bộ sang RabbitMQ. Outbox, saga: mức thiết kế.
+- Đã làm: tích hợp đồng bộ sang RabbitMQ, ack thủ công, prefetch 10–20, dead-letter, idempotent theo message id. Outbox, saga: chưa triển khai, nói thiết kế.
 - Outbox cùng transaction, relay at-least-once.
 - Idempotent ba lớp: idempotency key, inbox, unique constraint nghiệp vụ.
 - Saga: orchestration hoặc choreography, luôn có bù trừ và timeout; giao diện hiển thị "đang xử lý".
