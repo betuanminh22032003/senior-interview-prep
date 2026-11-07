@@ -48,7 +48,7 @@ export function Overview({ go }: { go: (view: string) => void }) {
             {learnedAll}
             <span>/{STUDY_ITEMS.length}</span>
           </p>
-          <p className="muted small">Gồm câu hỏi xoáy, từng dòng CV, keyword, hành vi</p>
+          <p className="muted small">Gồm câu hỏi xoáy, từng dòng CV, keyword, hành vi, tối ưu SQL</p>
         </div>
         <div className="card stat rise" style={{ '--i': 4 } as React.CSSProperties}>
           <p className="stat-label">Checklist trước khi dùng CV</p>

@@ -184,9 +184,79 @@ const data = {
 mkdirSync(new URL('../src/data/', import.meta.url), { recursive: true });
 writeFileSync(new URL('../src/data/prep.json', import.meta.url), JSON.stringify(data, null, 2));
 
+// content/sql-tuning.md → src/data/sql.json. "## T1. Group" holds "### S1. Skill" items.
+// Inside a skill, "**Viz:** key" picks an interactive widget and the list under "#### Tự hỏi" becomes Q&A.
+const sqlTokens = marked.lexer(readFileSync(new URL('../content/sql-tuning.md', import.meta.url), 'utf8'));
+const renderSql = (toks) => {
+  const list = [...toks];
+  list.links = sqlTokens.links ?? {};
+  return marked.parser(list);
+};
+const sqlIntro = [];
+const sqlGroups = [];
+for (const t of sqlTokens) {
+  if (t.type === 'hr' || (t.type === 'heading' && t.depth === 1)) continue;
+  const group = sqlGroups.at(-1);
+  if (t.type === 'heading' && t.depth === 2) {
+    const m = t.text.match(/^(T\d+)\.\s*(.*)$/);
+    sqlGroups.push({ id: m ? m[1] : t.text, title: m ? m[2] : t.text, intro: [], skills: [] });
+  } else if (t.type === 'heading' && t.depth === 3 && group) {
+    const m = t.text.match(/^(S\d+)\.\s*(.*)$/);
+    group.skills.push({ code: m ? m[1] : t.text, title: m ? m[2] : t.text, tokens: [] });
+  } else if (group?.skills.length) {
+    group.skills.at(-1).tokens.push(t);
+  } else {
+    (group?.intro ?? sqlIntro).push(t);
+  }
+}
+const sql = {
+  introHtml: renderSql(sqlIntro),
+  groups: sqlGroups.map((g) => ({
+    id: g.id,
+    title: g.title,
+    introHtml: renderSql(g.intro),
+    skills: g.skills.map((s) => {
+      let viz = '';
+      let inQa = false;
+      const body = [];
+      const qas = [];
+      for (const t of s.tokens) {
+        if (t.type === 'paragraph' && t.text.startsWith('**Viz:**')) {
+          viz = t.text.replace('**Viz:**', '').trim();
+          continue;
+        }
+        if (t.type === 'heading' && t.depth === 4) inQa = t.text.trim() === 'Tự hỏi';
+        if (inQa && t.type === 'list') {
+          for (const item of t.items) {
+            const m = item.text.match(QA_RE);
+            if (!m) throw new Error(`${s.code}: Q&A item must start with **"question?"**`);
+            qas.push({
+              id: `sql-${s.code}-q${qas.length + 1}`,
+              q: inline(m[1].trim()),
+              a: marked.parse(m[2].trim()),
+              source: s.code,
+              sourceTitle: s.title,
+            });
+          }
+          continue;
+        }
+        if (inQa) continue;
+        body.push(t);
+      }
+      return { id: s.code, code: s.code, title: s.title, group: g.id, viz, bodyHtml: renderSql(body), qas };
+    }),
+  })),
+};
+writeFileSync(new URL('../src/data/sql.json', import.meta.url), JSON.stringify(sql, null, 2));
+
 const qaCount = cards.reduce((n, c) => n + c.qas.length, 0);
 console.log(
   `prep.json: ${statusRows.length} status rows, ${cards.length} cards, ${qaCount} Q&A, ` +
     `${keywords.length} keywords, ${design.topics.length} design topics, ` +
     `${behavior.items.length} behavioral, ${checklist.length} checklist items`,
+);
+const sqlSkills = sql.groups.flatMap((g) => g.skills);
+console.log(
+  `sql.json: ${sql.groups.length} groups, ${sqlSkills.length} skills, ` +
+    `${sqlSkills.filter((s) => s.viz).length} widgets, ${sqlSkills.reduce((n, s) => n + s.qas.length, 0)} Q&A`,
 );

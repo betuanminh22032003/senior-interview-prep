@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   ChatsCircle,
   CheckSquare,
+  Database,
   House,
   Lightning,
   ListChecks,
@@ -19,6 +20,7 @@ import { Keywords } from './views/Keywords';
 import { Design } from './views/Design';
 import { Behavior } from './views/Behavior';
 import { Checklist } from './views/Checklist';
+import { Sql } from './views/Sql';
 
 const NAV: { key: string; label: string; icon: Icon }[] = [
   { key: 'overview', label: 'Tổng quan', icon: House },
@@ -27,6 +29,7 @@ const NAV: { key: string; label: string; icon: Icon }[] = [
   { key: 'keywords', label: 'Keyword', icon: Tag },
   { key: 'design', label: 'System design', icon: TreeStructure },
   { key: 'behavior', label: 'Hành vi', icon: ChatsCircle },
+  { key: 'sql', label: 'Tối ưu SQL', icon: Database },
   { key: 'checklist', label: 'Checklist', icon: CheckSquare },
 ];
 
@@ -114,6 +117,7 @@ export function App() {
           {view === 'keywords' && <Keywords />}
           {view === 'design' && <Design />}
           {view === 'behavior' && <Behavior />}
+          {view === 'sql' && <Sql />}
           {view === 'checklist' && <Checklist />}
         </main>
       </div>

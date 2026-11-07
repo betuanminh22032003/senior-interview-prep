@@ -1,7 +1,12 @@
 import raw from './data/prep.json';
-import type { PrepData } from './types';
+import sqlRaw from './data/sql.json';
+import type { PrepData, SqlData } from './types';
 
 export const data = raw as PrepData;
+
+export const sql = sqlRaw as SqlData;
+
+export const SQL_SKILLS = sql.groups.flatMap((g) => g.skills);
 
 export const GROUPS = [...new Set(data.cards.map((c) => c.group))];
 
@@ -10,7 +15,7 @@ export const ALL_QAS = data.cards.flatMap((c) => c.qas);
 /** One recall prompt per study item, used by the practice deck. */
 export interface StudyItem {
   id: string;
-  deck: 'qa' | 'card' | 'keyword' | 'behavior';
+  deck: 'qa' | 'card' | 'keyword' | 'behavior' | 'sql';
   label: string;
   front: string;
   back: string;
@@ -45,6 +50,15 @@ export const STUDY_ITEMS: StudyItem[] = [
     front: b.question,
     back: `<p>${b.story}</p><p class="muted">Nguồn: ${b.source}</p>`,
   })),
+  ...SQL_SKILLS.flatMap((s) =>
+    s.qas.map((q) => ({
+      id: q.id,
+      deck: 'sql' as const,
+      label: `${s.code} · ${s.title}`,
+      front: q.q,
+      back: q.a,
+    })),
+  ),
 ];
 
 export const DECKS: { key: StudyItem['deck'] | 'all'; label: string }[] = [
@@ -53,4 +67,5 @@ export const DECKS: { key: StudyItem['deck'] | 'all'; label: string }[] = [
   { key: 'card', label: 'Từng dòng CV' },
   { key: 'keyword', label: 'Keyword' },
   { key: 'behavior', label: 'Hành vi' },
+  { key: 'sql', label: 'Tối ưu SQL' },
 ];

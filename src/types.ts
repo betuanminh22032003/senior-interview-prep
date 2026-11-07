@@ -55,6 +55,29 @@ export interface PrepData {
   checklist: string[];
 }
 
+export interface SqlSkill {
+  id: string;
+  code: string;
+  title: string;
+  group: string;
+  /** Key of the interactive widget, empty when the skill has none. */
+  viz: string;
+  bodyHtml: string;
+  qas: QA[];
+}
+
+export interface SqlGroup {
+  id: string;
+  title: string;
+  introHtml: string;
+  skills: SqlSkill[];
+}
+
+export interface SqlData {
+  introHtml: string;
+  groups: SqlGroup[];
+}
+
 export const STATUS_LABEL: Record<Status, string> = {
   that: 'Thật',
   'mot-phan': 'Một phần',
