@@ -1,5 +1,5 @@
 {
-  "introHtml": "<p>Rút ra từ báo cáo nội bộ &quot;Phân tích hiệu năng API trên APM và giải pháp tối ưu hệ thống IOE&quot; (6 cụm SQL Server, đợt rà soát lại 06/10/2026). Trang này không ghi IP, tên server, tên proc hay bảng thật; mỗi ví dụ ghi vị trí trong báo cáo (Cụm X – Mục Y) để tra lại.</p>\n<p>Mỗi skill gồm: học gì, ví dụ trong báo cáo, cách sửa, cách kiểm chứng, bẫy cần tránh, câu tự hỏi. Skill có nhãn <strong>Tương tác</strong> có mô phỏng ngay trong thẻ.</p>\n<p><strong>Thứ tự học:</strong> T1 → T2 → T3 là phần lõi, đủ để tự xử lý phần lớn vấn đề trong báo cáo. Sau đó T4, T5. T6 dùng để luyện phản biện khi phỏng vấn.</p>\n<p><strong>Tài liệu nên đọc:</strong> Microsoft Learn: <em>Query processing architecture guide</em>, <em>Index architecture and design guide</em>, <em>Statistics</em>; Grant Fritchey, <em>SQL Server Execution Plans</em> (ebook miễn phí của Redgate); Itzik Ben-Gan, <em>T-SQL Querying</em>; blog Paul White, Erik Darling, Brent Ozar.</p>\n<p><strong>Công cụ:</strong> First Responder Kit (<code>sp_Blitz</code>, <code>sp_BlitzCache</code>, <code>sp_BlitzIndex</code>, <code>sp_BlitzFirst</code>), <code>sp_WhoIsActive</code>, Query Store, Plan Explorer, Ola Hallengren Maintenance Solution.</p>\n",
+  "introHtml": "<p>Rút ra từ báo cáo nội bộ &quot;Phân tích hiệu năng API trên APM và giải pháp tối ưu hệ thống IOE&quot; (6 cụm SQL Server, đợt rà soát lại 06/10/2026). Trang này không ghi IP, tên server, tên proc hay bảng thật; mỗi ví dụ ghi vị trí trong báo cáo (Cụm X – Mục Y) để tra lại.</p>\n<p>Mỗi skill gồm: học gì, ví dụ trong báo cáo, cách sửa, cách kiểm chứng, bẫy cần tránh, câu tự hỏi. Skill có nhãn <strong>Tương tác</strong> có mô phỏng ngay trong thẻ.</p>\n<p><strong>Thứ tự học:</strong> T1 → T2 → T3 là phần lõi, đủ để tự xử lý phần lớn vấn đề trong báo cáo. Sau đó T4, T5. T6 dùng để luyện phản biện khi phỏng vấn. T7 mở rộng ra các mảng tối ưu báo cáo chưa đụng tới.</p>\n<p><strong>Tài liệu nên đọc:</strong> Microsoft Learn: <em>Query processing architecture guide</em>, <em>Index architecture and design guide</em>, <em>Statistics</em>; Grant Fritchey, <em>SQL Server Execution Plans</em> (ebook miễn phí của Redgate); Itzik Ben-Gan, <em>T-SQL Querying</em>; blog Paul White, Erik Darling, Brent Ozar.</p>\n<p><strong>Công cụ:</strong> First Responder Kit (<code>sp_Blitz</code>, <code>sp_BlitzCache</code>, <code>sp_BlitzIndex</code>, <code>sp_BlitzFirst</code>), <code>sp_WhoIsActive</code>, Query Store, Plan Explorer, Ola Hallengren Maintenance Solution.</p>\n",
   "groups": [
     {
       "id": "T1",
@@ -415,6 +415,94 @@
       "title": "Đọc báo cáo bằng con mắt senior",
       "introHtml": "<p>Báo cáo này làm tốt việc gắn mỗi đề xuất với số đo và tiêu chí nghiệm thu (&quot;spill phải về 0&quot;, &quot;reads dưới 20.000 trang/lần&quot;). Khi phỏng vấn, ngoài việc kể đã sửa gì, cần chỉ ra được chỗ một kết luận có thể sai và cách kiểm chứng:</p>\n<ul>\n<li>Nhiều dòng trong <code>dm_exec_query_stats</code> là nhiều câu lệnh, chưa chắc là nhiều plan (S2).</li>\n<li><code>QDS_ASYNC_QUEUE</code>, <code>WAIT_XTP_HOST_WAIT</code> thường là wait nền cần lọc (S3).</li>\n<li>Ngưỡng tự cập nhật statistics phụ thuộc compatibility level (S10).</li>\n<li>Bảng biến trên SQL Server 2019 + compat 150 đã ước lượng đúng tổng số dòng, nhưng vẫn thiếu histogram (S13).</li>\n<li><code>ONLINE = ON</code> chỉ chạy trên Enterprise (S8).</li>\n<li>Chuyển SIMPLE phải hỏi RPO trước (S16).</li>\n<li>Identity bỏ page split nhưng tạo điểm nóng trang cuối (S7).</li>\n<li><code>RECOMPILE</code> trên proc gọi hàng triệu lần có giá CPU (S11).</li>\n<li>Transactional replication cần primary key (S21).</li>\n<li>Thứ tự ưu tiên hợp lý: sửa proc và code (nhanh, rollback dễ) → index trong khung đêm → cấu hình instance → thay đổi kiến trúc.</li>\n</ul>\n",
       "skills": []
+    },
+    {
+      "id": "T7",
+      "title": "Ngoài báo cáo: tối ưu cho hệ thống lớn",
+      "introHtml": "<p>Các mảng báo cáo chưa đụng tới nhưng hay gặp khi hệ thống lớn lên. Không phải toàn bộ kiến thức tối ưu, nhưng phủ các mảng chính cho backend.</p>\n<p><strong>Ưu tiên cho bài toán kỳ thi (tải dồn theo ca):</strong></p>\n<ol>\n<li>Admission control và rate limit lúc vào thi; hàng đợi cho nộp bài (S25, S26).</li>\n<li>Nạp sẵn cache đề và cấu hình trước ca; chống stampede (S24).</li>\n<li>Dòng nóng, bộ đếm và RCSI trên bảng ghi dồn (S23).</li>\n<li>Columnstore hoặc ClickHouse cho báo cáo, xếp hạng (S23).</li>\n<li>Load test dạng spike bằng k6 trên dữ liệu cỡ thật; theo dõi SLO p99 (S29).</li>\n</ol>\n<p><strong>Sách:</strong> <em>Designing Data-Intensive Applications</em> (Kleppmann), <em>Database Internals</em> (Petrov), <em>Systems Performance</em> (Gregg), <em>Release It!</em> (Nygard), <em>Site Reliability Engineering</em> (Google), <em>Pro .NET Memory Management</em> (Kokosa).</p>\n",
+      "skills": [
+        {
+          "id": "S23",
+          "code": "S23",
+          "title": "Database nâng cao",
+          "group": "T7",
+          "viz": "",
+          "bodyHtml": "<h4>Học gì</h4>\n<ul>\n<li>Đồng thời và khoá: RCSI và Snapshot isolation, phân tích deadlock (<code>system_health</code>, deadlock graph), lock escalation, optimistic concurrency bằng <code>rowversion</code>.</li>\n<li>Dòng nóng: một dòng bị cập nhật dồn dập (bộ đếm, số dư, lượt quay) → tách thành nhiều dòng (sharded counter) rồi cộng khi đọc, hoặc gom cập nhật theo lô.</li>\n<li>Columnstore index và batch mode cho báo cáo, tổng hợp, thường nhanh hơn rowstore hàng chục lần. SQL Server 2019 có batch mode trên rowstore (Enterprise).</li>\n<li>In-Memory OLTP: bảng memory-optimized cho dữ liệu nóng, session, hàng đợi; memory-optimized tempdb metadata.</li>\n<li>Partitioning sâu: partition elimination, aligned index, sliding window bằng <code>SWITCH</code>.</li>\n<li>Intelligent Query Processing (SQL Server 2019/2022): adaptive join, memory grant feedback, DOP feedback, CE feedback, Query Store hints.</li>\n<li>Ghi theo lô: <code>SqlBulkCopy</code>, TVP, minimal logging.</li>\n<li>Sinh ID: sequential GUID, Snowflake ID thay cho GUID ngẫu nhiên làm clustered key.</li>\n<li>HA/DR: Always On AG, read scale-out; ứng dụng phải retry khi failover.</li>\n<li>Sharding: chọn shard key, truy vấn chéo shard, chia lại shard. Distributed SQL: CockroachDB, YugabyteDB, TiDB, Citus.</li>\n<li>Đúng việc đúng kho: Elasticsearch/OpenSearch cho tìm kiếm (thay <code>LIKE &#39;%x%&#39;</code>), ClickHouse cho phân tích, time-series DB cho log và metric, object storage cho file.</li>\n<li>CQRS, read model, indexed view.</li>\n</ul>\n",
+          "qas": []
+        },
+        {
+          "id": "S24",
+          "code": "S24",
+          "title": "Cache nâng cao",
+          "group": "T7",
+          "viz": "",
+          "bodyHtml": "<h4>Học gì</h4>\n<ul>\n<li>Cache hai tầng: trong process (L1) + Redis (L2). .NET 9 trở lên có <code>HybridCache</code>.</li>\n<li>Chống stampede: gộp request trùng (request coalescing), hết hạn sớm theo xác suất (XFetch), stale-while-revalidate.</li>\n<li>Hot key và big key: nhân bản key nóng, cache cục bộ, tránh value lớn.</li>\n<li>Invalidation: xoá cache theo CDC hoặc outbox, key có version.</li>\n<li>Redis: pipeline, Lua script, cluster slot, eviction policy, đánh đổi khi bật persistence.</li>\n<li>HTTP và CDN: <code>Cache-Control</code>, ETag, output caching, cache ở edge.</li>\n</ul>\n",
+          "qas": []
+        },
+        {
+          "id": "S25",
+          "code": "S25",
+          "title": "Bất đồng bộ và messaging",
+          "group": "T7",
+          "viz": "",
+          "bodyHtml": "<h4>Học gì</h4>\n<ul>\n<li>Load leveling: đẩy request vào hàng đợi để san tải lúc đỉnh, ví dụ nộp bài đầu và cuối ca thi.</li>\n<li>Kafka, RabbitMQ: partition key, thứ tự trong partition, consumer lag, backpressure.</li>\n<li>Giao hàng tin cậy: outbox/inbox, idempotency key, DLQ, retry có backoff.</li>\n<li>Saga thay cho distributed transaction.</li>\n<li>Xử lý luồng: Flink, Kafka Streams, tổng hợp tăng dần thay cho job tính lại toàn bộ.</li>\n</ul>\n",
+          "qas": []
+        },
+        {
+          "id": "S26",
+          "code": "S26",
+          "title": "Scale và chịu lỗi",
+          "group": "T7",
+          "viz": "",
+          "bodyHtml": "<h4>Học gì</h4>\n<ul>\n<li>Service stateless, autoscale (HPA, KEDA theo độ dài hàng đợi), load balancing (least-connection, power of two choices).</li>\n<li>Bảo vệ hệ thống: rate limiting (token bucket, sliding window), load shedding, admission control, hàng đợi ưu tiên.</li>\n<li>Gọi giữa service: ngân sách timeout xuyên chuỗi, retry có jitter, circuit breaker, bulkhead, hedged request để giảm tail latency.</li>\n<li>Suy giảm có kiểm soát: graceful degradation, feature flag, kill switch.</li>\n<li>Warmup và cold start; thundering herd khi nhiều instance cùng khởi động.</li>\n<li>Cell-based architecture để giới hạn phạm vi ảnh hưởng khi có sự cố.</li>\n</ul>\n",
+          "qas": []
+        },
+        {
+          "id": "S27",
+          "code": "S27",
+          "title": "Runtime .NET",
+          "group": "T7",
+          "viz": "",
+          "bodyHtml": "<h4>Học gì</h4>\n<ul>\n<li>Thread pool starvation do sync-over-async (<code>.Result</code>, <code>.Wait()</code>); đọc qua <code>dotnet-counters</code> (ThreadPool Queue Length).</li>\n<li>GC và cấp phát: Server GC, <code>Span&lt;T&gt;</code>, <code>ArrayPool</code>, object pooling, Large Object Heap.</li>\n<li>Serialization: System.Text.Json source generator, Protobuf, MessagePack.</li>\n<li>HTTP: <code>IHttpClientFactory</code>, HTTP/2 và HTTP/3, gRPC streaming, nén Brotli.</li>\n<li>Đo: <code>dotnet-counters</code>, <code>dotnet-trace</code>, PerfView, BenchmarkDotNet.</li>\n<li>Khởi động nhanh: Native AOT, ReadyToRun.</li>\n</ul>\n",
+          "qas": []
+        },
+        {
+          "id": "S28",
+          "code": "S28",
+          "title": "Mạng và API",
+          "group": "T7",
+          "viz": "",
+          "bodyHtml": "<h4>Học gì</h4>\n<ul>\n<li>Keep-alive, TLS session resumption, giảm kích thước payload, phân trang bắt buộc.</li>\n<li>GraphQL N+1 xử lý bằng DataLoader.</li>\n<li>Đa vùng (multi-region), đặt dữ liệu gần người dùng, ngân sách latency cho từng chặng.</li>\n</ul>\n",
+          "qas": []
+        },
+        {
+          "id": "S29",
+          "code": "S29",
+          "title": "Performance engineering",
+          "group": "T7",
+          "viz": "",
+          "bodyHtml": "<h4>Học gì</h4>\n<ul>\n<li>Metric: RED (rate, errors, duration) cho service, USE (utilization, saturation, errors) cho tài nguyên; SLI, SLO, error budget.</li>\n<li>Nhìn p99, p999 bằng histogram, không nhìn trung bình.</li>\n<li>Quan sát: distributed tracing có exemplar, continuous profiling (Pyroscope).</li>\n<li>Load test: k6, Gatling, JMeter. Gồm soak, spike, stress; chạy trên dữ liệu cỡ production.</li>\n<li>Lý thuyết hàng đợi: utilization quá 70–80% thì latency tăng vọt. Universal Scalability Law, Amdahl&#39;s law, capacity planning.</li>\n<li>Chaos engineering; chặn hồi quy hiệu năng trong CI (Query Store regressed queries, benchmark gate).</li>\n</ul>\n",
+          "qas": []
+        },
+        {
+          "id": "S30",
+          "code": "S30",
+          "title": "Vòng đời dữ liệu và chi phí",
+          "group": "T7",
+          "viz": "",
+          "bodyHtml": "<h4>Học gì</h4>\n<ul>\n<li>Phân tầng nóng, ấm, lạnh; TTL; nén.</li>\n<li>FinOps: chi phí trên mỗi request, right-sizing máy và DB.</li>\n</ul>\n",
+          "qas": []
+        },
+        {
+          "id": "S31",
+          "code": "S31",
+          "title": "Mảng khác chưa đi sâu",
+          "group": "T7",
+          "viz": "",
+          "bodyHtml": "<h4>Học gì</h4>\n<ul>\n<li>PostgreSQL: MVCC, vacuum và bloat, <code>EXPLAIN (ANALYZE, BUFFERS)</code>, PgBouncer.</li>\n<li>MySQL InnoDB: buffer pool, clustered primary key, gap lock.</li>\n<li>Linux: TCP backlog, file descriptor, NUMA, công cụ của Brendan Gregg (<code>perf</code>, eBPF).</li>\n<li>Runtime khác: JVM (GC, JIT), Go (goroutine, pprof).</li>\n<li>Frontend và mobile: Core Web Vitals, bundle size, lazy loading.</li>\n<li>Dữ liệu lớn và tìm kiếm: Spark, data lake, tinh chỉnh Elasticsearch (shard, mapping, refresh interval).</li>\n</ul>\n",
+          "qas": []
+        }
+      ]
     }
   ]
 }

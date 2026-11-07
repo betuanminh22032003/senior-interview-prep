@@ -54,7 +54,7 @@ export function Sql() {
   return (
     <div className="page">
       <PageHeader eyebrow={`${SQL_SKILLS.length} skill · ${vizCount} mô phỏng`} title="Tối ưu SQL Server">
-        Các skill cần học, rút từ báo cáo hiệu năng APM của hệ thống thi. Bấm một skill trên bản đồ để mở. Câu tự hỏi đã thuộc: {learned}/
+        Các skill cần học, rút từ báo cáo hiệu năng APM của hệ thống thi, mở rộng ở T7. Bấm một skill trên bản đồ để mở. Câu tự hỏi đã thuộc: {learned}/
         {qaIds.length}, ôn tiếp ở mục Luyện tập, bộ Tối ưu SQL.
       </PageHeader>
 

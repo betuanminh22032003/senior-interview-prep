@@ -4,7 +4,7 @@ Rút ra từ báo cáo nội bộ "Phân tích hiệu năng API trên APM và gi
 
 Mỗi skill gồm: học gì, ví dụ trong báo cáo, cách sửa, cách kiểm chứng, bẫy cần tránh, câu tự hỏi. Skill có nhãn **Tương tác** có mô phỏng ngay trong thẻ.
 
-**Thứ tự học:** T1 → T2 → T3 là phần lõi, đủ để tự xử lý phần lớn vấn đề trong báo cáo. Sau đó T4, T5. T6 dùng để luyện phản biện khi phỏng vấn.
+**Thứ tự học:** T1 → T2 → T3 là phần lõi, đủ để tự xử lý phần lớn vấn đề trong báo cáo. Sau đó T4, T5. T6 dùng để luyện phản biện khi phỏng vấn. T7 mở rộng ra các mảng tối ưu báo cáo chưa đụng tới.
 
 **Tài liệu nên đọc:** Microsoft Learn: *Query processing architecture guide*, *Index architecture and design guide*, *Statistics*; Grant Fritchey, *SQL Server Execution Plans* (ebook miễn phí của Redgate); Itzik Ben-Gan, *T-SQL Querying*; blog Paul White, Erik Darling, Brent Ozar.
 
@@ -671,3 +671,114 @@ Báo cáo này làm tốt việc gắn mỗi đề xuất với số đo và ti�
 - `RECOMPILE` trên proc gọi hàng triệu lần có giá CPU (S11).
 - Transactional replication cần primary key (S21).
 - Thứ tự ưu tiên hợp lý: sửa proc và code (nhanh, rollback dễ) → index trong khung đêm → cấu hình instance → thay đổi kiến trúc.
+
+## T7. Ngoài báo cáo: tối ưu cho hệ thống lớn
+
+Các mảng báo cáo chưa đụng tới nhưng hay gặp khi hệ thống lớn lên. Không phải toàn bộ kiến thức tối ưu, nhưng phủ các mảng chính cho backend.
+
+**Ưu tiên cho bài toán kỳ thi (tải dồn theo ca):**
+
+1. Admission control và rate limit lúc vào thi; hàng đợi cho nộp bài (S25, S26).
+2. Nạp sẵn cache đề và cấu hình trước ca; chống stampede (S24).
+3. Dòng nóng, bộ đếm và RCSI trên bảng ghi dồn (S23).
+4. Columnstore hoặc ClickHouse cho báo cáo, xếp hạng (S23).
+5. Load test dạng spike bằng k6 trên dữ liệu cỡ thật; theo dõi SLO p99 (S29).
+
+**Sách:** *Designing Data-Intensive Applications* (Kleppmann), *Database Internals* (Petrov), *Systems Performance* (Gregg), *Release It!* (Nygard), *Site Reliability Engineering* (Google), *Pro .NET Memory Management* (Kokosa).
+
+### S23. Database nâng cao
+
+#### Học gì
+
+- Đồng thời và khoá: RCSI và Snapshot isolation, phân tích deadlock (`system_health`, deadlock graph), lock escalation, optimistic concurrency bằng `rowversion`.
+- Dòng nóng: một dòng bị cập nhật dồn dập (bộ đếm, số dư, lượt quay) → tách thành nhiều dòng (sharded counter) rồi cộng khi đọc, hoặc gom cập nhật theo lô.
+- Columnstore index và batch mode cho báo cáo, tổng hợp, thường nhanh hơn rowstore hàng chục lần. SQL Server 2019 có batch mode trên rowstore (Enterprise).
+- In-Memory OLTP: bảng memory-optimized cho dữ liệu nóng, session, hàng đợi; memory-optimized tempdb metadata.
+- Partitioning sâu: partition elimination, aligned index, sliding window bằng `SWITCH`.
+- Intelligent Query Processing (SQL Server 2019/2022): adaptive join, memory grant feedback, DOP feedback, CE feedback, Query Store hints.
+- Ghi theo lô: `SqlBulkCopy`, TVP, minimal logging.
+- Sinh ID: sequential GUID, Snowflake ID thay cho GUID ngẫu nhiên làm clustered key.
+- HA/DR: Always On AG, read scale-out; ứng dụng phải retry khi failover.
+- Sharding: chọn shard key, truy vấn chéo shard, chia lại shard. Distributed SQL: CockroachDB, YugabyteDB, TiDB, Citus.
+- Đúng việc đúng kho: Elasticsearch/OpenSearch cho tìm kiếm (thay `LIKE '%x%'`), ClickHouse cho phân tích, time-series DB cho log và metric, object storage cho file.
+- CQRS, read model, indexed view.
+
+### S24. Cache nâng cao
+
+#### Học gì
+
+- Cache hai tầng: trong process (L1) + Redis (L2). .NET 9 trở lên có `HybridCache`.
+- Chống stampede: gộp request trùng (request coalescing), hết hạn sớm theo xác suất (XFetch), stale-while-revalidate.
+- Hot key và big key: nhân bản key nóng, cache cục bộ, tránh value lớn.
+- Invalidation: xoá cache theo CDC hoặc outbox, key có version.
+- Redis: pipeline, Lua script, cluster slot, eviction policy, đánh đổi khi bật persistence.
+- HTTP và CDN: `Cache-Control`, ETag, output caching, cache ở edge.
+
+### S25. Bất đồng bộ và messaging
+
+#### Học gì
+
+- Load leveling: đẩy request vào hàng đợi để san tải lúc đỉnh, ví dụ nộp bài đầu và cuối ca thi.
+- Kafka, RabbitMQ: partition key, thứ tự trong partition, consumer lag, backpressure.
+- Giao hàng tin cậy: outbox/inbox, idempotency key, DLQ, retry có backoff.
+- Saga thay cho distributed transaction.
+- Xử lý luồng: Flink, Kafka Streams, tổng hợp tăng dần thay cho job tính lại toàn bộ.
+
+### S26. Scale và chịu lỗi
+
+#### Học gì
+
+- Service stateless, autoscale (HPA, KEDA theo độ dài hàng đợi), load balancing (least-connection, power of two choices).
+- Bảo vệ hệ thống: rate limiting (token bucket, sliding window), load shedding, admission control, hàng đợi ưu tiên.
+- Gọi giữa service: ngân sách timeout xuyên chuỗi, retry có jitter, circuit breaker, bulkhead, hedged request để giảm tail latency.
+- Suy giảm có kiểm soát: graceful degradation, feature flag, kill switch.
+- Warmup và cold start; thundering herd khi nhiều instance cùng khởi động.
+- Cell-based architecture để giới hạn phạm vi ảnh hưởng khi có sự cố.
+
+### S27. Runtime .NET
+
+#### Học gì
+
+- Thread pool starvation do sync-over-async (`.Result`, `.Wait()`); đọc qua `dotnet-counters` (ThreadPool Queue Length).
+- GC và cấp phát: Server GC, `Span<T>`, `ArrayPool`, object pooling, Large Object Heap.
+- Serialization: System.Text.Json source generator, Protobuf, MessagePack.
+- HTTP: `IHttpClientFactory`, HTTP/2 và HTTP/3, gRPC streaming, nén Brotli.
+- Đo: `dotnet-counters`, `dotnet-trace`, PerfView, BenchmarkDotNet.
+- Khởi động nhanh: Native AOT, ReadyToRun.
+
+### S28. Mạng và API
+
+#### Học gì
+
+- Keep-alive, TLS session resumption, giảm kích thước payload, phân trang bắt buộc.
+- GraphQL N+1 xử lý bằng DataLoader.
+- Đa vùng (multi-region), đặt dữ liệu gần người dùng, ngân sách latency cho từng chặng.
+
+### S29. Performance engineering
+
+#### Học gì
+
+- Metric: RED (rate, errors, duration) cho service, USE (utilization, saturation, errors) cho tài nguyên; SLI, SLO, error budget.
+- Nhìn p99, p999 bằng histogram, không nhìn trung bình.
+- Quan sát: distributed tracing có exemplar, continuous profiling (Pyroscope).
+- Load test: k6, Gatling, JMeter. Gồm soak, spike, stress; chạy trên dữ liệu cỡ production.
+- Lý thuyết hàng đợi: utilization quá 70–80% thì latency tăng vọt. Universal Scalability Law, Amdahl's law, capacity planning.
+- Chaos engineering; chặn hồi quy hiệu năng trong CI (Query Store regressed queries, benchmark gate).
+
+### S30. Vòng đời dữ liệu và chi phí
+
+#### Học gì
+
+- Phân tầng nóng, ấm, lạnh; TTL; nén.
+- FinOps: chi phí trên mỗi request, right-sizing máy và DB.
+
+### S31. Mảng khác chưa đi sâu
+
+#### Học gì
+
+- PostgreSQL: MVCC, vacuum và bloat, `EXPLAIN (ANALYZE, BUFFERS)`, PgBouncer.
+- MySQL InnoDB: buffer pool, clustered primary key, gap lock.
+- Linux: TCP backlog, file descriptor, NUMA, công cụ của Brendan Gregg (`perf`, eBPF).
+- Runtime khác: JVM (GC, JIT), Go (goroutine, pprof).
+- Frontend và mobile: Core Web Vitals, bundle size, lazy loading.
+- Dữ liệu lớn và tìm kiếm: Spark, data lake, tinh chỉnh Elasticsearch (shard, mapping, refresh interval).
